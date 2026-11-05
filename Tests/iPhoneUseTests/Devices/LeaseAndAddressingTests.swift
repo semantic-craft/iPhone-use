@@ -35,32 +35,32 @@ final class LeaseAndAddressingTests: XCTestCase {
         try super.tearDownWithError()
     }
 
-    // MARK: - 1. Device Addressing ("Hermes", "default", USB ID, Prefix)
+    // MARK: - 1. Device Addressing ("PhoneA", "default", USB ID, Prefix)
 
-    func testDeviceAddressingResolvesHermesCaseInsensitivelyAndDefaultAndPrefix() throws {
-        let hermes = DeviceCandidate(id: "00008110-001A2B3C4D5E6F", name: "Hermes")
+    func testDeviceAddressingResolvesPhoneACaseInsensitivelyAndDefaultAndPrefix() throws {
+        let phoneA = DeviceCandidate(id: "00008110-001A2B3C4D5E6F", name: "PhoneA")
         let apollo = DeviceCandidate(id: "00008120-99887766554433", name: "Apollo")
 
-        // Single connected phone: nil, empty, and "default" (any case) resolve to Hermes.
+        // Single connected phone: nil, empty, and "default" (any case) resolve to PhoneA.
         for selector in [nil, "", "   ", "default", "DEFAULT", "Default"] {
             XCTAssertEqual(
-                DeviceAddressing.resolve(selector, from: [hermes]),
-                .success(hermes),
+                DeviceAddressing.resolve(selector, from: [phoneA]),
+                .success(phoneA),
                 "Selector \(String(describing: selector)) should resolve to single device"
             )
         }
 
         // Multiple connected phones: "default" fails with .multipleDevicesConnected,
-        // while "Hermes" (case-insensitive), exact ID, and unique ID prefix resolve cleanly.
-        let twoPhones = [hermes, apollo]
+        // while "PhoneA" (case-insensitive), exact ID, and unique ID prefix resolve cleanly.
+        let twoPhones = [phoneA, apollo]
         XCTAssertEqual(
             DeviceAddressing.resolve("default", from: twoPhones),
             .failure(.multipleDevicesConnected(count: 2))
         )
-        for query in ["Hermes", "hermes", "HERMES", "  hermes  "] {
+        for query in ["PhoneA", "phonea", "PHONEA", "  phoneA  "] {
             XCTAssertEqual(
                 DeviceAddressing.resolve(query, from: twoPhones),
-                .success(hermes)
+                .success(phoneA)
             )
         }
         XCTAssertEqual(
@@ -69,7 +69,7 @@ final class LeaseAndAddressingTests: XCTestCase {
         )
         XCTAssertEqual(
             DeviceAddressing.resolve("00008110", from: twoPhones),
-            .success(hermes)
+            .success(phoneA)
         )
 
         // Ambiguous prefix ("000081") and duplicate display names fail with .ambiguousMatch.
@@ -77,13 +77,13 @@ final class LeaseAndAddressingTests: XCTestCase {
             DeviceAddressing.resolve("000081", from: twoPhones),
             .failure(.ambiguousMatch(query: "000081", count: 2))
         )
-        let duplicateHermes = [
-            hermes,
-            DeviceCandidate(id: "00008130-11223344556677", name: "hermes"),
+        let duplicatePhoneA = [
+            phoneA,
+            DeviceCandidate(id: "00008130-11223344556677", name: "phonea"),
         ]
         XCTAssertEqual(
-            DeviceAddressing.resolve("Hermes", from: duplicateHermes),
-            .failure(.ambiguousMatch(query: "Hermes", count: 2))
+            DeviceAddressing.resolve("PhoneA", from: duplicatePhoneA),
+            .failure(.ambiguousMatch(query: "PhoneA", count: 2))
         )
         XCTAssertEqual(
             DeviceAddressing.resolve("NonExistent", from: twoPhones),
@@ -95,24 +95,24 @@ final class LeaseAndAddressingTests: XCTestCase {
         )
     }
 
-    func testMCPResolveDeviceSupportsHermesDefaultAndRejectsAmbiguousNames() throws {
+    func testMCPResolveDeviceSupportsPhoneADefaultAndRejectsAmbiguousNames() throws {
         let singlePayload = try JSONSerialization.data(withJSONObject: [
             "devices": [
-                ["id": "usb-hermes-01", "name": "Hermes"]
+                ["id": "usb-phone-01", "name": "PhoneA"]
             ]
         ])
-        XCTAssertEqual(try MCPServer.resolveDevice(nil, data: singlePayload), "usb-hermes-01")
-        XCTAssertEqual(try MCPServer.resolveDevice("default", data: singlePayload), "usb-hermes-01")
-        XCTAssertEqual(try MCPServer.resolveDevice("HERMES", data: singlePayload), "usb-hermes-01")
-        XCTAssertEqual(try MCPServer.resolveDevice("usb-hermes", data: singlePayload), "usb-hermes-01")
+        XCTAssertEqual(try MCPServer.resolveDevice(nil, data: singlePayload), "usb-phone-01")
+        XCTAssertEqual(try MCPServer.resolveDevice("default", data: singlePayload), "usb-phone-01")
+        XCTAssertEqual(try MCPServer.resolveDevice("PHONEA", data: singlePayload), "usb-phone-01")
+        XCTAssertEqual(try MCPServer.resolveDevice("usb-phone", data: singlePayload), "usb-phone-01")
 
         let multiPayload = try JSONSerialization.data(withJSONObject: [
             "devices": [
-                ["id": "usb-hermes-01", "name": "Hermes"],
+                ["id": "usb-phone-01", "name": "PhoneA"],
                 ["id": "usb-apollo-02", "name": "Apollo"],
             ]
         ])
-        XCTAssertEqual(try MCPServer.resolveDevice("hermes", data: multiPayload), "usb-hermes-01")
+        XCTAssertEqual(try MCPServer.resolveDevice("phonea", data: multiPayload), "usb-phone-01")
         XCTAssertEqual(try MCPServer.resolveDevice("Apollo", data: multiPayload), "usb-apollo-02")
         XCTAssertThrowsError(try MCPServer.resolveDevice("default", data: multiPayload)) { error in
             XCTAssertTrue(String(describing: error).contains("found 2"))
@@ -126,8 +126,8 @@ final class LeaseAndAddressingTests: XCTestCase {
         let store1 = try LeaseStore(stateDirectory: tempDirectory, now: { now })
 
         let first = try store1.acquire(
-            deviceID: "usb-hermes-01",
-            deviceName: "Hermes",
+            deviceID: "usb-phone-01",
+            deviceName: "PhoneA",
             reason: "check messages",
             label: "agent-alpha"
         )
@@ -172,8 +172,8 @@ final class LeaseAndAddressingTests: XCTestCase {
         now += 10
         let store2 = try LeaseStore(stateDirectory: tempDirectory, now: { now })
         let second = try store2.acquire(
-            deviceID: "usb-hermes-01",
-            deviceName: "Hermes",
+            deviceID: "usb-phone-01",
+            deviceName: "PhoneA",
             reason: "open Safari",
             label: "agent-beta"
         )
@@ -186,14 +186,14 @@ final class LeaseAndAddressingTests: XCTestCase {
         let store = try LeaseStore(stateDirectory: tempDirectory, now: { now })
 
         // 1. Before any lease is acquired, direct unleased calls succeed.
-        let unleased = try store.authorizeAndTouch(deviceID: "usb-hermes-01", leaseID: nil, command: "tap")
-        XCTAssertEqual(unleased.deviceID, "usb-hermes-01")
+        let unleased = try store.authorizeAndTouch(deviceID: "usb-phone-01", leaseID: nil, command: "tap")
+        XCTAssertEqual(unleased.deviceID, "usb-phone-01")
         XCTAssertNil(unleased.lease)
 
-        // 2. Agent A acquires a lease on Hermes (default 600s = 10-minute idle timeout).
+        // 2. Agent A acquires a lease on PhoneA (default 600s = 10-minute idle timeout).
         let acq1 = try store.acquire(
-            deviceID: "usb-hermes-01",
-            deviceName: "Hermes",
+            deviceID: "usb-phone-01",
+            deviceName: "PhoneA",
             reason: "wechat reply",
             label: "ses_a"
         )
@@ -203,8 +203,8 @@ final class LeaseAndAddressingTests: XCTestCase {
         // 3. While Lease 1 is active, a competing acquire without force fails with .deviceLeased.
         XCTAssertThrowsError(
             try store.acquire(
-                deviceID: "usb-hermes-01",
-                deviceName: "Hermes",
+                deviceID: "usb-phone-01",
+                deviceName: "PhoneA",
                 reason: "competing task",
                 label: "ses_b"
             )
@@ -212,15 +212,15 @@ final class LeaseAndAddressingTests: XCTestCase {
             guard case LeaseError.deviceLeased(let name, let holder) = error else {
                 return XCTFail("Expected .deviceLeased, got \(error)")
             }
-            XCTAssertEqual(name, "Hermes")
+            XCTAssertEqual(name, "PhoneA")
             XCTAssertEqual(holder.label, "ses_a")
             XCTAssertEqual(holder.reason, "wechat reply")
         }
 
-        // 4. Direct unleased call on Hermes is rejected while Lease 1 is active,
+        // 4. Direct unleased call on PhoneA is rejected while Lease 1 is active,
         //    whereas another unleased phone ("usb-apollo-02") remains usable without a lease.
         XCTAssertThrowsError(
-            try store.authorizeAndTouch(deviceID: "usb-hermes-01", leaseID: nil, command: "tap")
+            try store.authorizeAndTouch(deviceID: "usb-phone-01", leaseID: nil, command: "tap")
         ) { error in
             XCTAssertEqual((error as? LeaseError)?.errorCode, "device-leased")
         }
@@ -232,7 +232,7 @@ final class LeaseAndAddressingTests: XCTestCase {
         //    Also verifies omitting deviceID resolves it from the lease.
         now += 300
         let touched = try store.authorizeAndTouch(deviceID: nil, leaseID: acq1.lease.id, command: "swipe")
-        XCTAssertEqual(touched.deviceID, "usb-hermes-01")
+        XCTAssertEqual(touched.deviceID, "usb-phone-01")
         XCTAssertEqual(touched.lease?.lastUsedAt, now)
         XCTAssertEqual(touched.lease?.lastCommand, "swipe")
         XCTAssertEqual(touched.lease?.expiresAt, now + 600)
@@ -240,33 +240,33 @@ final class LeaseAndAddressingTests: XCTestCase {
         // At t + 899s (599s after last activity), Lease 1 is still active.
         now += 599
         XCTAssertThrowsError(
-            try store.authorizeAndTouch(deviceID: "usb-hermes-01", leaseID: nil, command: "tap")
+            try store.authorizeAndTouch(deviceID: "usb-phone-01", leaseID: nil, command: "tap")
         )
 
         // At t + 900s (600s idle timeout reached), Lease 1 expires automatically:
         // direct unleased calls succeed again and the old lease ID is rejected as lease-invalid.
         now += 1
         XCTAssertNoThrow(
-            try store.authorizeAndTouch(deviceID: "usb-hermes-01", leaseID: nil, command: "tap")
+            try store.authorizeAndTouch(deviceID: "usb-phone-01", leaseID: nil, command: "tap")
         )
         XCTAssertThrowsError(
-            try store.authorizeAndTouch(deviceID: "usb-hermes-01", leaseID: acq1.lease.id, command: "tap")
+            try store.authorizeAndTouch(deviceID: "usb-phone-01", leaseID: acq1.lease.id, command: "tap")
         ) { error in
             XCTAssertEqual((error as? LeaseError)?.errorCode, "lease-invalid")
         }
 
         // 6. Acquire Lease 2 and test force takeover -> Lease 3 with `replaced` populated.
         let acq2 = try store.acquire(
-            deviceID: "usb-hermes-01",
-            deviceName: "Hermes",
+            deviceID: "usb-phone-01",
+            deviceName: "PhoneA",
             reason: "long job",
             label: "ses_b"
         )
         XCTAssertEqual(acq2.lease.id.description, "2")
         now += 5
         let acq3 = try store.acquire(
-            deviceID: "usb-hermes-01",
-            deviceName: "Hermes",
+            deviceID: "usb-phone-01",
+            deviceName: "PhoneA",
             reason: "urgent override",
             label: "ses_c",
             force: true
@@ -279,8 +279,8 @@ final class LeaseAndAddressingTests: XCTestCase {
     func testWaitBlocksUntilReleaseOrExpiryAndExposesWaiterInQueue() throws {
         let store = try LeaseStore(stateDirectory: tempDirectory)
         let first = try store.acquire(
-            deviceID: "usb-hermes-01",
-            deviceName: "Hermes",
+            deviceID: "usb-phone-01",
+            deviceName: "PhoneA",
             reason: "first holder",
             label: "holder-1"
         )
@@ -294,8 +294,8 @@ final class LeaseAndAddressingTests: XCTestCase {
             var notified = false
             do {
                 let result = try store.wait(
-                    deviceID: "usb-hermes-01",
-                    deviceName: "Hermes",
+                    deviceID: "usb-phone-01",
+                    deviceName: "PhoneA",
                     reason: "queued task",
                     label: "waiter-2",
                     idleTimeoutSeconds: 600,
@@ -317,7 +317,7 @@ final class LeaseAndAddressingTests: XCTestCase {
         }
 
         wait(for: [waiterEntered], timeout: 2.0)
-        let activeWaiters = try store.waiters(forDeviceID: "usb-hermes-01")
+        let activeWaiters = try store.waiters(forDeviceID: "usb-phone-01")
         XCTAssertEqual(activeWaiters.count, 1)
         XCTAssertEqual(activeWaiters.first?.label, "waiter-2")
         XCTAssertEqual(activeWaiters.first?.reason, "queued task")
@@ -328,15 +328,15 @@ final class LeaseAndAddressingTests: XCTestCase {
 
         XCTAssertEqual(waitedAcquisition?.lease.id.description, "2")
         XCTAssertEqual(waitedAcquisition?.lease.label, "waiter-2")
-        XCTAssertTrue(try store.waiters(forDeviceID: "usb-hermes-01").isEmpty)
+        XCTAssertTrue(try store.waiters(forDeviceID: "usb-phone-01").isEmpty)
     }
 
     // MARK: - 3. Setup Readiness Check (`setup_status`)
 
-    func testSetupReadinessStepProgressionAndHermesSelection() throws {
+    func testSetupReadinessStepProgressionAndPhoneASelection() throws {
         func makePhone(
-            id: String = "usb-hermes-01",
-            name: String = "Hermes",
+            id: String = "usb-phone-01",
+            name: String = "PhoneA",
             trusted: Bool = true,
             hasFrame: Bool = true,
             captureError: String? = nil,
@@ -376,7 +376,7 @@ final class LeaseAndAddressingTests: XCTestCase {
 
         // 2. Locked phone -> step = .unlock
         let locked = SetupReadiness.evaluate(
-            query: "hermes",
+            query: "phonea",
             inputs: SetupInputs(
                 macName: "Studio",
                 camera: .authorized,
@@ -386,12 +386,12 @@ final class LeaseAndAddressingTests: XCTestCase {
             )
         )
         XCTAssertFalse(locked.ready)
-        XCTAssertEqual(locked.device, "usb-hermes-01")
+        XCTAssertEqual(locked.device, "usb-phone-01")
         XCTAssertEqual(locked.phones.first?.step, .unlock)
 
         // 3. USB capture error -> step = .usbUnreadable
         let unreadable = SetupReadiness.evaluate(
-            query: "Hermes",
+            query: "PhoneA",
             inputs: SetupInputs(
                 macName: "Studio",
                 camera: .authorized,
@@ -405,7 +405,7 @@ final class LeaseAndAddressingTests: XCTestCase {
 
         // 4. Bluetooth powered off -> step = .bluetoothUnavailable
         let btOff = SetupReadiness.evaluate(
-            query: "Hermes",
+            query: "PhoneA",
             inputs: SetupInputs(
                 macName: "Studio",
                 camera: .authorized,
@@ -419,7 +419,7 @@ final class LeaseAndAddressingTests: XCTestCase {
 
         // 5. Unpaired Bluetooth -> step = .pair
         let unpaired = SetupReadiness.evaluate(
-            query: "Hermes",
+            query: "PhoneA",
             inputs: SetupInputs(
                 macName: "Studio",
                 camera: .authorized,
@@ -433,7 +433,7 @@ final class LeaseAndAddressingTests: XCTestCase {
 
         // 6. Paired Bluetooth still reconnecting -> step = .connecting
         let connecting = SetupReadiness.evaluate(
-            query: "Hermes",
+            query: "PhoneA",
             inputs: SetupInputs(
                 macName: "Studio",
                 camera: .authorized,
@@ -445,15 +445,15 @@ final class LeaseAndAddressingTests: XCTestCase {
         XCTAssertFalse(connecting.ready)
         XCTAssertEqual(connecting.phones.first?.step, .connecting)
 
-        // 7. Two phones connected (Hermes ready, Apollo locked):
-        //    "default" is not ready (ambiguous), while query = "hermes" is ready!
+        // 7. Two phones connected (PhoneA ready, Apollo locked):
+        //    "default" is not ready (ambiguous), while query = "phonea" is ready!
         let twoPhonesInputs = SetupInputs(
             macName: "Studio",
             camera: .authorized,
             bluetoothState: "poweredOn",
             usbAttachedCount: 2,
             phones: [
-                makePhone(id: "usb-hermes-01", name: "Hermes"),
+                makePhone(id: "usb-phone-01", name: "PhoneA"),
                 makePhone(id: "usb-apollo-02", name: "Apollo", lockState: .suspected),
             ]
         )
@@ -461,16 +461,16 @@ final class LeaseAndAddressingTests: XCTestCase {
         XCTAssertFalse(defaultReport.ready)
         XCTAssertNil(defaultReport.device)
 
-        let hermesReport = SetupReadiness.evaluate(query: "hermes", inputs: twoPhonesInputs)
-        XCTAssertTrue(hermesReport.ready)
-        XCTAssertEqual(hermesReport.device, "usb-hermes-01")
+        let phoneAReport = SetupReadiness.evaluate(query: "phonea", inputs: twoPhonesInputs)
+        XCTAssertTrue(phoneAReport.ready)
+        XCTAssertEqual(phoneAReport.device, "usb-phone-01")
     }
 
     // MARK: - 4. HTTP ControlAPI & MCP Auto-Start (`--resident-quiet`)
 
     func testHTTPControlAPILeaseAndSetupStatusRoutes() throws {
         let candidates = [
-            DeviceCandidate(id: "usb-hermes-01", name: "Hermes"),
+            DeviceCandidate(id: "usb-phone-01", name: "PhoneA"),
             DeviceCandidate(id: "usb-apollo-02", name: "Apollo"),
         ]
         let setupInputs = SetupInputs(
@@ -480,8 +480,8 @@ final class LeaseAndAddressingTests: XCTestCase {
             usbAttachedCount: 2,
             phones: [
                 SetupInputs.PhoneSnapshot(
-                    id: "usb-hermes-01",
-                    name: "Hermes",
+                    id: "usb-phone-01",
+                    name: "PhoneA",
                     trusted: true,
                     hasFrame: true,
                     captureError: nil,
@@ -502,7 +502,7 @@ final class LeaseAndAddressingTests: XCTestCase {
             let req = try XCTUnwrap(HTTPRequest.parse(wire))
             let resp = ControlAPI.handle(
                 req,
-                ocrCapture: { query, _ in (query ?? "usb-hermes-01", Data()) },
+                ocrCapture: { query, _ in (query ?? "usb-phone-01", Data()) },
                 deviceCandidates: candidates,
                 setupInputs: setupInputs
             )
@@ -510,38 +510,38 @@ final class LeaseAndAddressingTests: XCTestCase {
             return (resp.status, json)
         }
 
-        // 1. GET /setup_status?device=hermes
-        let (setupCode, setupJSON) = try send("GET", "/setup_status?device=hermes")
+        // 1. GET /setup_status?device=phoneA
+        let (setupCode, setupJSON) = try send("GET", "/setup_status?device=phoneA")
         XCTAssertEqual(setupCode, 200)
         XCTAssertEqual(setupJSON["ready"] as? Bool, true)
-        XCTAssertEqual(setupJSON["device"] as? String, "usb-hermes-01")
+        XCTAssertEqual(setupJSON["device"] as? String, "usb-phone-01")
 
-        // 2. POST /leases with device="Hermes"
+        // 2. POST /leases with device="PhoneA"
         let (acqCode, acqJSON) = try send(
             "POST",
             "/leases",
-            ["device": "Hermes", "reason": "automated smoke test", "label": "http-client-1"]
+            ["device": "PhoneA", "reason": "automated smoke test", "label": "http-client-1"]
         )
         XCTAssertEqual(acqCode, 200)
         XCTAssertEqual(acqJSON["id"] as? String, "1")
-        XCTAssertEqual(acqJSON["device"] as? String, "usb-hermes-01")
-        XCTAssertEqual(acqJSON["deviceName"] as? String, "Hermes")
+        XCTAssertEqual(acqJSON["device"] as? String, "usb-phone-01")
+        XCTAssertEqual(acqJSON["deviceName"] as? String, "PhoneA")
         XCTAssertEqual(acqJSON["idleTimeoutSeconds"] as? Int, 600)
 
         // 3. Competing POST /leases without force returns HTTP 409 device-leased
         let (conflictCode, conflictJSON) = try send(
             "POST",
             "/leases",
-            ["device": "hermes", "reason": "other client"]
+            ["device": "phonea", "reason": "other client"]
         )
         XCTAssertEqual(conflictCode, 409)
         XCTAssertEqual(conflictJSON["code"] as? String, "device-leased")
 
-        // 4. Unleased POST /home on Hermes returns HTTP 409 device-leased
+        // 4. Unleased POST /home on PhoneA returns HTTP 409 device-leased
         let (unleasedHomeCode, unleasedHomeJSON) = try send(
             "POST",
             "/home",
-            ["device": "Hermes"]
+            ["device": "PhoneA"]
         )
         XCTAssertEqual(unleasedHomeCode, 409)
         XCTAssertEqual(unleasedHomeJSON["code"] as? String, "device-leased")
@@ -552,7 +552,7 @@ final class LeaseAndAddressingTests: XCTestCase {
         XCTAssertEqual(relJSON["released"] as? Bool, true)
     }
 
-    func testMCPAutoLaunchesResidentQuietDaemonAndExecutesHermesLeaseLifecycle() throws {
+    func testMCPAutoLaunchesResidentQuietDaemonAndExecutesPhoneALeaseLifecycle() throws {
         // Bind an ephemeral localhost port by opening and closing a socket, then let the
         // auto-start spawner start a lightweight HTTPServer on that port when MCPServer connects!
         let probeSocket = socket(AF_INET, SOCK_STREAM, 0)
@@ -597,8 +597,8 @@ final class LeaseAndAddressingTests: XCTestCase {
                     return .json([
                         "devices": [
                             [
-                                "id": "usb-hermes-01",
-                                "name": "Hermes",
+                                "id": "usb-phone-01",
+                                "name": "PhoneA",
                                 "bluetooth": true,
                                 "bluetoothState": "connected",
                                 "lockState": "notDetected",
@@ -615,10 +615,10 @@ final class LeaseAndAddressingTests: XCTestCase {
 
         // 1. Call `acquire` through MCPServer when the daemon is NOT running yet.
         //    MCPHTTPClient should auto-launch with `["--resident-quiet"]`, wait until `/config` is ready,
-        //    resolve "hermes" case-insensitively, and acquire Lease 1!
+        //    resolve "phonea" case-insensitively, and acquire Lease 1!
         let acquireReply = MCPServer.executeToolCall(
             "acquire",
-            ["device": "hermes", "reason": "MCP auto-start test", "label": "mcp-session"]
+            ["device": "phonea", "reason": "MCP auto-start test", "label": "mcp-session"]
         )
         XCTAssertNil(acquireReply["isError"], "Expected acquire to succeed after auto-start: \(acquireReply)")
         XCTAssertEqual(spawnedArguments, [["--resident-quiet"]])
@@ -631,11 +631,11 @@ final class LeaseAndAddressingTests: XCTestCase {
             JSONSerialization.jsonObject(with: Data(acquireText.utf8)) as? [String: Any]
         )
         XCTAssertEqual(acquireJSON["id"] as? String, "1")
-        XCTAssertEqual(acquireJSON["device"] as? String, "usb-hermes-01")
-        XCTAssertEqual(acquireJSON["deviceName"] as? String, "Hermes")
+        XCTAssertEqual(acquireJSON["device"] as? String, "usb-phone-01")
+        XCTAssertEqual(acquireJSON["deviceName"] as? String, "PhoneA")
 
         // 2. Call `setup_status` via MCPServer and verify lease metadata is included.
-        let statusReply = MCPServer.executeToolCall("setup_status", ["device": "Hermes"])
+        let statusReply = MCPServer.executeToolCall("setup_status", ["device": "PhoneA"])
         XCTAssertNil(statusReply["isError"])
         let statusText = try XCTUnwrap(
             (statusReply["content"] as? [[String: Any]])?.first?["text"] as? String

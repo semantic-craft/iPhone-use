@@ -1041,7 +1041,7 @@ final class StateDirUSBSystemProvider: USBSystemProvider {
             language: "en-US",
             locale: "en_US",
             timeZone: TimeZone.current.identifier,
-            wifiAddress: "A4:83:E7:12:34:56",
+            wifiAddress: "02:00:00:00:00:01",
             sim: USBDeviceInfo.SIMInfo(
                 telephony: true,
                 tray: "sim",
@@ -1542,8 +1542,8 @@ enum MobileDeviceLockdownBridge {
         let normalizedApp = (activeApp ?? "").lowercased()
         if normalizedApp.contains("tiktok") || normalizedApp.contains("musically") {
             drawLine("TikTok Publish Preview", xFrac: 0.08, topYFrac: 0.28, fontSizeFrac: 0.058)
-            drawLine("Video: hermes_clip.mp4", xFrac: 0.08, topYFrac: 0.36, fontSizeFrac: 0.048, bold: false)
-            drawLine("Caption: Ready on Hermes", xFrac: 0.08, topYFrac: 0.43, fontSizeFrac: 0.048, bold: false)
+            drawLine("Video: sample_clip.mp4", xFrac: 0.08, topYFrac: 0.36, fontSizeFrac: 0.048, bold: false)
+            drawLine("Caption: Ready on iPhone", xFrac: 0.08, topYFrac: 0.43, fontSizeFrac: 0.048, bold: false)
             drawLine("Stop before tapping Post", xFrac: 0.08, topYFrac: 0.51, fontSizeFrac: 0.045, bold: false)
 
             let btnRect = CGRect(

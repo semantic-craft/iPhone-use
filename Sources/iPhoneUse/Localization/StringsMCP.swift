@@ -142,7 +142,7 @@ struct StringsMCP: LocalizedTable {
             "在当前应用中执行一段简短、已知的键盘序列，最后返回一张截图。所有步骤在输入前完成校验；同一手机的 MCP 锁覆盖整个序列。出错即停止且不会重放。需要查看中间画面时请拆分为多次调用。支持 steps/actions 别名、可选 type 字段及 0...5 秒的 delay/wait 步骤。文字步骤支持 clear_before、commit_ime、press_enter、ensure_chinese_ime。最多 16 步、文字总量 256 字符；中文转拼音并选择首个候选词。",
         toolHome: "回到主屏幕。",
         toolSetupStatus: "检查 Mac 摄像头权限、蓝牙状态、iPhone USB 信任与解锁就绪状态，返回当前所处步骤与租约状态。",
-        toolAcquire: "获取指定 iPhone（支持名称如 Hermes、default 或 ID）的独占租约，默认空闲超时 600 秒（10 分钟）。",
+        toolAcquire: "获取指定 iPhone（支持名称如 iPhone、default 或 ID）的独占租约，默认空闲超时 600 秒（10 分钟）。",
         toolWait: "等待正在占用目标 iPhone 的租约释放或过期后自动获取新租约。",
         toolRelease: "主动释放已持有的 iPhone 租约 ID。",
         leaseParam: "可选的租约 ID（由 acquire 或 wait 返回）。提供时将自动刷新租约空闲计时并校验归属；未提供时在设备未被其他租约占用时直接执行。",
@@ -252,7 +252,7 @@ struct StringsMCP: LocalizedTable {
         toolSetupStatus:
             "Check macOS camera permission, Bluetooth state, and iPhone USB trust/unlock readiness, returning the current setup step and lease status.",
         toolAcquire:
-            "Acquire an exclusive lease on a target iPhone (by display name such as Hermes, default, or ID) with a 600-second (10-minute) default idle timeout.",
+            "Acquire an exclusive lease on a target iPhone (by display name such as iPhone, default, or ID) with a 600-second (10-minute) default idle timeout.",
         toolWait:
             "Wait until the active lease on the target iPhone is released or expires, then automatically acquire a new lease.",
         toolRelease: "Release an active iPhone lease by its lease ID.",

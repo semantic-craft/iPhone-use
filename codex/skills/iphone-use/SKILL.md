@@ -1,6 +1,6 @@
 ---
 name: iphone-use
-description: "通过本地 iphone-use MCP 服务操作已连接的真实 iPhone（USB 屏幕采集/AFC/安装/日志 + 蓝牙 HID 指针与键盘 + Gemini 3.8 Flash 多步 task）。当用户要求在真机（如 Hermes）上截图、点击、滑动、输入文字、解锁、传输相册/应用文件、启动应用或执行多步移动端任务时使用。不要用于 iOS 模拟器（Simulator 请用 mobilebuildmcp）。"
+description: "通过本地 iphone-use MCP 服务操作已连接的真实 iPhone（USB 屏幕采集/AFC/安装/日志 + 蓝牙 HID 指针与键盘 + Gemini 3.8 Flash 多步 task）。当用户要求在真机（如 iPhone）上截图、点击、滑动、输入文字、解锁、传输相册/应用文件、启动应用或执行多步移动端任务时使用。不要用于 iOS 模拟器（Simulator 请用 mobilebuildmcp）。"
 ---
 
 # iPhone Use（Ghosthand 融合版真机控制技能）
@@ -13,7 +13,7 @@ description: "通过本地 iphone-use MCP 服务操作已连接的真实 iPhone�
    ```bash
    python3 <skill_dir>/scripts/ensure_service.py --wait 6
    ```
-2. **先查就绪状态**：开始任务或遇到连接异常时，优先调用 `setup_status`（如 `setup_status(device: "Hermes")`），按返回的确定性步骤排查：
+2. **先查就绪状态**：开始任务或遇到连接异常时，优先调用 `setup_status`（如 `setup_status(device: "iPhone")`），按返回的确定性步骤排查：
    - `trust`：在 iPhone 上点击“信任此电脑”并授予 macOS 相机/屏幕采集权限。
    - `unlock`：iPhone 处于锁屏状态，需调用 `unlock(passcode)` 或请用户在真机上解锁。
    - `usbUnreadable`：重插 USB 线或检查采集会话。
@@ -22,9 +22,9 @@ description: "通过本地 iphone-use MCP 服务操作已连接的真实 iPhone�
 
 ## 2. 设备寻址与租约锁（`acquire` / `wait` / `release`）
 
-1. **按名或前缀寻址**：所有工具均接受 `device: "Hermes"`（不区分大小写）、`"default"`（单机接入时）、完整 `id` 或唯一 `id` 前缀。多台 iPhone 接入时必须显式传入 `device` 或 `lease`。
-2. **写操作前先拿租约**：执行多步操控前调用 `acquire(device: "Hermes", reason: "<任务简述>", label: "<会话名>")` 获取单调递增租约号（默认空闲超时 `600s`），后续动作传入 `lease`，任务结束调用 `release(lease)` 释放。
-   - 若设备被其他会话持有且返回 `device-leased`，可调用 `wait(device: "Hermes", reason: "...", waitSeconds: 60)` 排队等待，切勿盲目 `force: true` 抢占正在执行的任务（除非用户明确要求强制接管）。
+1. **按名或前缀寻址**：所有工具均接受 `device: "iPhone"`（不区分大小写）、`"default"`（单机接入时）、完整 `id` 或唯一 `id` 前缀。多台 iPhone 接入时必须显式传入 `device` 或 `lease`。
+2. **写操作前先拿租约**：执行多步操控前调用 `acquire(device: "iPhone", reason: "<任务简述>", label: "<会话名>")` 获取单调递增租约号（默认空闲超时 `600s`），后续动作传入 `lease`，任务结束调用 `release(lease)` 释放。
+   - 若设备被其他会话持有且返回 `device-leased`，可调用 `wait(device: "iPhone", reason: "...", waitSeconds: 60)` 排队等待，切勿盲目 `force: true` 抢占正在执行的任务（除非用户明确要求强制接管）。
    - 只读工具（`list_devices`、`screenshot`、`ocr_screen`、`screentext`、`setup_status`、`photo_list`、`photo_pull`、`file_list`、`file_pull`、`app_list`、`device_info`、`device_logs`）在不传 `lease` 时可直接读取。
 
 ## 3. 画面观察、动作后静止检测与 Ghosthand 操作铁律
@@ -62,7 +62,7 @@ description: "通过本地 iphone-use MCP 服务操作已连接的真实 iPhone�
 
 ## 5. Gemini 3.8 Flash 自主多步 `task(prompt, resume)` 与安全门禁
 
-对于跨界面的自然语言多步任务，可调用 `task(device: "Hermes", lease: "<id>", prompt: "...", thinking_level: "low|medium|high")`：
+对于跨界面的自然语言多步任务，可调用 `task(device: "iPhone", lease: "<id>", prompt: "...", thinking_level: "low|medium|high")`：
 - 内部基于 `gemini-3.8-flash` Interactions API（`computer_use` mobile `0..999` 网格坐标 + `previous_interaction_id` 多轮状态链）自主循环执行。
 - **三层敏感操作门禁**：遇到公开社交发布（如点击 `Post` / `发布`）、资金支付、密码输入或不可逆删除时，通过模型显式调用 `yield_to_user`、服务端 `safety_decision` 或客户端 OCR 命中拦截，任务会停在 `state: "yielded"` 并返回 `task` ID 与 `yield_reason`。
 - 收到 `yielded` 后，向用户展示发布前最后一步截图与待确认操作；获用户明确批准后，再调用 `task(resume: "<task_id>", approve: true, prompt: "...")` 继续完成。
@@ -71,9 +71,9 @@ description: "通过本地 iphone-use MCP 服务操作已连接的真实 iPhone�
 
 若宿主（Codex 或 AGY）内置 MCP 通道报 `Transport closed`：
 1. 运行 `python3 <skill_dir>/scripts/ensure_service.py --wait 6` 确认本地服务在线。
-2. 使用 `<skill_dir>/scripts/mcp_call.py` 发起单次全新 stdio 调用（支持全部 46 个工具）：
+2. 使用 `<skill_dir>/scripts/mcp_call.py` 发起单次全新 stdio 调用（支持全部 50 个工具）：
    ```bash
-   python3 <skill_dir>/scripts/mcp_call.py setup_status --arguments '{"device":"Hermes"}'
-   python3 <skill_dir>/scripts/mcp_call.py screenshot --arguments '{"device":"Hermes","screentext":true}' --output-dir /tmp/iphone-use
+   python3 <skill_dir>/scripts/mcp_call.py setup_status --arguments '{"device":"iPhone"}'
+   python3 <skill_dir>/scripts/mcp_call.py screenshot --arguments '{"device":"iPhone","screentext":true}' --output-dir /tmp/iphone-use
    ```
 3. 若写操作返回 `"may_have_executed": true`，重试前必须先 `screenshot` 或 `screentext` 核实画面是否已变化。

@@ -114,8 +114,8 @@ final class USBAndGeminiTaskTests: XCTestCase {
             reportReadiness: { _, _, _ in true }
         )
         return GhosthandRuntimeHooks(
-            deviceID: "hermes-id",
-            deviceName: "Hermes",
+            deviceID: "phone-id",
+            deviceName: "iPhone",
             screenSize: CGSize(width: 400, height: 800),
             input: input,
             captureFrame: { _, _ in frameData },
@@ -335,8 +335,8 @@ final class USBAndGeminiTaskTests: XCTestCase {
         )
         XCTAssertEqual(infoResp.status, 200)
         let infoJSON = try decodeJSON(infoResp)
-        XCTAssertEqual(infoJSON["name"] as? String, "Hermes")
-        XCTAssertEqual(infoJSON["udid"] as? String, "hermes-id")
+        XCTAssertEqual(infoJSON["name"] as? String, "iPhone")
+        XCTAssertEqual(infoJSON["udid"] as? String, "phone-id")
 
         // 4. device_logs filters syslog lines
         let logsResp = ControlAPI.handle(
@@ -724,8 +724,8 @@ final class USBAndGeminiTaskTests: XCTestCase {
         XCTAssertTrue(publishTexts.contains("TikTok"), "Got OCR: \(publishTexts)")
         XCTAssertTrue(publishTexts.contains("Post"), "Got OCR: \(publishTexts)")
 
-        let setupReq = try CLIRunner.buildRequest(from: ["setup_status", "--device", "Hermes"])
+        let setupReq = try CLIRunner.buildRequest(from: ["setup_status", "--device", "iPhone"])
         XCTAssertEqual(setupReq.path, "/setup_status")
-        XCTAssertEqual(setupReq.query["device"], "Hermes")
+        XCTAssertEqual(setupReq.query["device"], "iPhone")
     }
 }

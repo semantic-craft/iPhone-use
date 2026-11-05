@@ -1078,11 +1078,11 @@ enum ControlAPI {
             )
         }
         if !RuntimeEnvironment.isLiveHardwareAllowed() {
-            let fallbackID = deviceQuery ?? "hermes-id"
+            let fallbackID = deviceQuery ?? "phone-id"
             try authorizeDeviceLease(deviceID: fallbackID, leaseID: leaseID, command: command)
             return (
                 deviceID: fallbackID,
-                deviceName: "Hermes",
+                deviceName: "iPhone",
                 screenSize: CGSize(width: 1179, height: 2556),
                 isLocked: false,
                 provider: StateDirUSBSystemProvider.shared

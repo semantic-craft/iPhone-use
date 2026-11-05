@@ -33,7 +33,7 @@ enum DeviceAddressing {
     /// Resolves `nil`, `""`, or `"default"` (case-insensitive) to the single connected phone.
     /// Resolves non-default queries by precedence:
     /// 1. Exact ID match (case-insensitive)
-    /// 2. Exact display name match (case-insensitive, e.g. `"Hermes"`)
+    /// 2. Exact display name match (case-insensitive, e.g. `"iPhone"` or `"Phone-A"`)
     /// 3. ID prefix match (case-insensitive)
     /// Any tier with multiple hits fails with `.ambiguousMatch` rather than picking `.first`.
     static func resolve(

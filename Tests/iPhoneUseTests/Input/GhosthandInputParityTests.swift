@@ -139,8 +139,8 @@ final class GhosthandInputParityTests: XCTestCase {
         var simulatedNow: TimeInterval = 100.0
 
         let hooks = GhosthandRuntimeHooks(
-            deviceID: "hermes-1",
-            deviceName: "Hermes",
+            deviceID: "test-phone-1",
+            deviceName: "iPhone",
             screenSize: CGSize(width: 400, height: 800),
             input: input,
             captureFrame: { _, _ in
@@ -190,7 +190,7 @@ final class GhosthandInputParityTests: XCTestCase {
         )
         let response = ControlAPI.handle(
             req,
-            ocrCapture: { _, _ in ("hermes-1", frame3) },
+            ocrCapture: { _, _ in ("test-phone-1", frame3) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(response.status, 200)
@@ -234,8 +234,8 @@ final class GhosthandInputParityTests: XCTestCase {
         var simulatedNow: TimeInterval = 10.0
 
         let hooks = GhosthandRuntimeHooks(
-            deviceID: "hermes-1",
-            deviceName: "Hermes",
+            deviceID: "test-phone-1",
+            deviceName: "iPhone",
             screenSize: CGSize(width: 400, height: 800),
             input: input,
             captureFrame: { _, _ in frame },
@@ -260,7 +260,7 @@ final class GhosthandInputParityTests: XCTestCase {
             )
             let badResp = ControlAPI.handle(
                 badReq,
-                ocrCapture: { _, _ in ("hermes-1", frame) },
+                ocrCapture: { _, _ in ("test-phone-1", frame) },
                 runtimeHooks: hooks
             )
             XCTAssertEqual(badResp.status, 400)
@@ -275,7 +275,7 @@ final class GhosthandInputParityTests: XCTestCase {
         )
         let timeoutResp = ControlAPI.handle(
             timeoutReq,
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(timeoutResp.status, 408)
@@ -302,8 +302,8 @@ final class GhosthandInputParityTests: XCTestCase {
         )
         let frame = try makePNGData(luma: 100)
         let hooks = GhosthandRuntimeHooks(
-            deviceID: "hermes-1",
-            deviceName: "Hermes",
+            deviceID: "test-phone-1",
+            deviceName: "iPhone",
             screenSize: CGSize(width: 400, height: 800),
             input: input,
             captureFrame: { _, _ in frame },
@@ -331,7 +331,7 @@ final class GhosthandInputParityTests: XCTestCase {
         events.removeAll()
         let doubleTapResp = ControlAPI.handle(
             try makeJSONRequest("POST", "/double-tap", body: ["text": "Open Album"]),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(doubleTapResp.status, 200)
@@ -346,7 +346,7 @@ final class GhosthandInputParityTests: XCTestCase {
         events.removeAll()
         let tripleTapResp = ControlAPI.handle(
             try makeJSONRequest("POST", "/triple_tap", body: ["x": 100, "y": 200]),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(tripleTapResp.status, 200)
@@ -359,7 +359,7 @@ final class GhosthandInputParityTests: XCTestCase {
         sleeps.removeAll()
         let holdResp = ControlAPI.handle(
             try makeJSONRequest("POST", "/hold", body: ["text": "Open Album", "durationMs": 1500]),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(holdResp.status, 200)
@@ -383,8 +383,8 @@ final class GhosthandInputParityTests: XCTestCase {
         )
         let frame = try makePNGData(luma: 100)
         let hooks = GhosthandRuntimeHooks(
-            deviceID: "hermes-1",
-            deviceName: "Hermes",
+            deviceID: "test-phone-1",
+            deviceName: "iPhone",
             screenSize: CGSize(width: 400, height: 800),
             input: input,
             captureFrame: { _, _ in frame }
@@ -402,7 +402,7 @@ final class GhosthandInputParityTests: XCTestCase {
                     "durationMs": 600,
                 ]
             ),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(holdDragResp.status, 200)
@@ -422,7 +422,7 @@ final class GhosthandInputParityTests: XCTestCase {
             events.removeAll()
             let scrollResp = ControlAPI.handle(
                 try makeJSONRequest("POST", "/scroll", body: ["direction": dir, "ticks": 4]),
-                ocrCapture: { _, _ in ("hermes-1", frame) },
+                ocrCapture: { _, _ in ("test-phone-1", frame) },
                 runtimeHooks: hooks
             )
             XCTAssertEqual(scrollResp.status, 200)
@@ -456,8 +456,8 @@ final class GhosthandInputParityTests: XCTestCase {
         var mutePressCount = 0
 
         let hooks = GhosthandRuntimeHooks(
-            deviceID: "hermes-1",
-            deviceName: "Hermes",
+            deviceID: "test-phone-1",
+            deviceName: "iPhone",
             screenSize: CGSize(width: 400, height: 800),
             input: input,
             captureFrame: { _, _ in frame },
@@ -469,7 +469,7 @@ final class GhosthandInputParityTests: XCTestCase {
         // 1) wake when locked -> fails with 409 device-locked
         let wakeLockedResp = ControlAPI.handle(
             try makeJSONRequest("POST", "/wake"),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(wakeLockedResp.status, 409)
@@ -481,7 +481,7 @@ final class GhosthandInputParityTests: XCTestCase {
         let secretPasscode = "948271"
         let unlockFailResp = ControlAPI.handle(
             try makeJSONRequest("POST", "/unlock", body: ["passcode": secretPasscode]),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(unlockFailResp.status, 422)
@@ -496,8 +496,8 @@ final class GhosthandInputParityTests: XCTestCase {
         // 3) unlock when passcode succeeds -> unlocks phone
         unlockstaysLocked = false
         let unlockSuccessHooks = GhosthandRuntimeHooks(
-            deviceID: "hermes-1",
-            deviceName: "Hermes",
+            deviceID: "test-phone-1",
+            deviceName: "iPhone",
             screenSize: CGSize(width: 400, height: 800),
             input: input,
             captureFrame: { _, _ in frame },
@@ -511,7 +511,7 @@ final class GhosthandInputParityTests: XCTestCase {
         events.removeAll()
         let unlockOkResp = ControlAPI.handle(
             try makeJSONRequest("POST", "/unlock", body: ["passcode": secretPasscode]),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: unlockSuccessHooks
         )
         XCTAssertEqual(unlockOkResp.status, 200)
@@ -519,8 +519,8 @@ final class GhosthandInputParityTests: XCTestCase {
 
         // 4) lock sends Ctrl+Cmd+Q and verifies lock state
         let lockHooks = GhosthandRuntimeHooks(
-            deviceID: "hermes-1",
-            deviceName: "Hermes",
+            deviceID: "test-phone-1",
+            deviceName: "iPhone",
             screenSize: CGSize(width: 400, height: 800),
             input: input,
             captureFrame: { _, _ in frame },
@@ -535,7 +535,7 @@ final class GhosthandInputParityTests: XCTestCase {
         events.removeAll()
         let lockResp = ControlAPI.handle(
             try makeJSONRequest("POST", "/lock"),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: lockHooks
         )
         XCTAssertEqual(lockResp.status, 200)
@@ -544,7 +544,7 @@ final class GhosthandInputParityTests: XCTestCase {
         // 5) key("mute") is rejected; mute/unmute toggle consumer 0x00E2 and confirm state
         let muteKeyResp = ControlAPI.handle(
             try makeJSONRequest("POST", "/key", body: ["key": "mute"]),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(muteKeyResp.status, 400)
@@ -553,8 +553,8 @@ final class GhosthandInputParityTests: XCTestCase {
         events.removeAll()
         mutePressCount = 0
         let muteHooks = GhosthandRuntimeHooks(
-            deviceID: "hermes-1",
-            deviceName: "Hermes",
+            deviceID: "test-phone-1",
+            deviceName: "iPhone",
             screenSize: CGSize(width: 400, height: 800),
             input: input,
             captureFrame: { _, _ in frame },
@@ -565,7 +565,7 @@ final class GhosthandInputParityTests: XCTestCase {
         )
         let muteResp = ControlAPI.handle(
             try makeJSONRequest("POST", "/mute"),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: muteHooks
         )
         XCTAssertEqual(muteResp.status, 200)
@@ -578,7 +578,7 @@ final class GhosthandInputParityTests: XCTestCase {
         observedMuted = nil
         let unconfirmedResp = ControlAPI.handle(
             try makeJSONRequest("POST", "/unmute"),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(unconfirmedResp.status, 502)
@@ -608,8 +608,8 @@ final class GhosthandInputParityTests: XCTestCase {
         )
         let frame = try makePNGData(luma: 120)
         let hooks = GhosthandRuntimeHooks(
-            deviceID: "hermes-1",
-            deviceName: "Hermes",
+            deviceID: "test-phone-1",
+            deviceName: "iPhone",
             screenSize: CGSize(width: 400, height: 800),
             input: input,
             captureFrame: { _, _ in frame },
@@ -623,7 +623,7 @@ final class GhosthandInputParityTests: XCTestCase {
                 "/recording/start",
                 body: ["outputPath": outPath, "maxDurationSeconds": 120, "fps": 30, "audio": false]
             ),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(startResp.status, 200)
@@ -636,7 +636,7 @@ final class GhosthandInputParityTests: XCTestCase {
         // Starting a second recording on the same phone fails with 409 recording-active
         let duplicateResp = ControlAPI.handle(
             try makeJSONRequest("POST", "/recording/start"),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(duplicateResp.status, 409)
@@ -646,7 +646,7 @@ final class GhosthandInputParityTests: XCTestCase {
         currentUptime += 2.5
         let stopResp = ControlAPI.handle(
             try makeJSONRequest("POST", "/recording/stop"),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(stopResp.status, 200)
@@ -681,7 +681,7 @@ final class GhosthandInputParityTests: XCTestCase {
             now: 109.5,
             devices: [
                 .init(
-                    id: "hermes-1",
+                    id: "test-phone-1",
                     hasUSBFrame: true,
                     isLocked: false,
                     isBluetoothReady: true,
@@ -723,7 +723,7 @@ final class GhosthandInputParityTests: XCTestCase {
             now: 110.0,
             devices: [
                 .init(
-                    id: "hermes-1",
+                    id: "test-phone-1",
                     hasUSBFrame: true,
                     isLocked: false,
                     isBluetoothReady: true,
@@ -732,7 +732,7 @@ final class GhosthandInputParityTests: XCTestCase {
                 )
             ]
         )
-        XCTAssertEqual(fired, ["hermes-1"])
+        XCTAssertEqual(fired, ["test-phone-1"])
         XCTAssertEqual(events.count, 2)
         XCTAssertEqual(events[0].0, .keyboard)
         XCTAssertEqual(events[0].1, [0x01, 0, 0, 0, 0, 0, 0, 0])
@@ -743,8 +743,8 @@ final class GhosthandInputParityTests: XCTestCase {
         events.removeAll()
         let nativeImage = try makePNGData(luma: 210)
         let hooks = GhosthandRuntimeHooks(
-            deviceID: "hermes-1",
-            deviceName: "Hermes",
+            deviceID: "test-phone-1",
+            deviceName: "iPhone",
             screenSize: CGSize(width: 400, height: 800),
             input: input,
             captureFrame: { _, _ in nativeImage },
@@ -759,7 +759,7 @@ final class GhosthandInputParityTests: XCTestCase {
         )
         let nativeResp = ControlAPI.handle(
             try makeJSONRequest("GET", "/screenshot?native=1"),
-            ocrCapture: { _, _ in ("hermes-1", nativeImage) },
+            ocrCapture: { _, _ in ("test-phone-1", nativeImage) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(nativeResp.status, 200)
@@ -788,7 +788,7 @@ final class GhosthandInputParityTests: XCTestCase {
                     "wait_text": "Success",
                     "timeout_ms": 4000,
                     "screentext": true,
-                    "device": "Hermes",
+                    "device": "iPhone",
                 ],
                 longEdge: 1000
             )
@@ -798,7 +798,7 @@ final class GhosthandInputParityTests: XCTestCase {
         XCTAssertEqual(doubleTap.body["waitText"] as? String, "Success")
         XCTAssertEqual(doubleTap.body["timeoutMs"] as? Int, 4000)
         XCTAssertEqual(doubleTap.body["screentext"] as? Bool, true)
-        XCTAssertEqual(doubleTap.body["device"] as? String, "Hermes")
+        XCTAssertEqual(doubleTap.body["device"] as? String, "iPhone")
 
         let holdDrag = try XCTUnwrap(
             MCPToolRequest.action(
@@ -856,8 +856,8 @@ final class GhosthandInputParityTests: XCTestCase {
         )
         let frame = try makePNGData(luma: 100)
         let hooks = GhosthandRuntimeHooks(
-            deviceID: "hermes-1",
-            deviceName: "Hermes",
+            deviceID: "test-phone-1",
+            deviceName: "iPhone",
             screenSize: CGSize(width: 400, height: 1000),
             input: input,
             captureFrame: { _, _ in frame },
@@ -877,7 +877,7 @@ final class GhosthandInputParityTests: XCTestCase {
         // 1) Missing text returns localized prefix + `saw: [...]`
         let missingResp = ControlAPI.handle(
             try makeJSONRequest("POST", "/tap_text", body: ["text": "Alipay"]),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(missingResp.status, 400)
@@ -890,7 +890,7 @@ final class GhosthandInputParityTests: XCTestCase {
         movedPoints.removeAll()
         let iconResp = ControlAPI.handle(
             try makeJSONRequest("POST", "/tap_icon", body: ["text": "WeChat"]),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(iconResp.status, 200)
@@ -941,8 +941,8 @@ final class GhosthandInputParityTests: XCTestCase {
         ]
 
         let hooks = GhosthandRuntimeHooks(
-            deviceID: "hermes-1",
-            deviceName: "Hermes",
+            deviceID: "test-phone-1",
+            deviceName: "iPhone",
             screenSize: CGSize(width: 400, height: 800),
             input: input,
             captureFrame: { _, _ in frame },
@@ -963,7 +963,7 @@ final class GhosthandInputParityTests: XCTestCase {
                 "/scroll_until",
                 body: ["until_text": "Privacy & Security", "direction": "down", "max_scrolls": 5]
             ),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(foundResp.status, 200)
@@ -980,7 +980,7 @@ final class GhosthandInputParityTests: XCTestCase {
                 "/scroll_collect",
                 body: ["direction": "down", "max_scrolls": 8, "end_after": 2]
             ),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(collectResp.status, 200)
@@ -1004,8 +1004,8 @@ final class GhosthandInputParityTests: XCTestCase {
             reportReadiness: { _, _, _ in true }
         )
         let hooks = GhosthandRuntimeHooks(
-            deviceID: "hermes-1",
-            deviceName: "Hermes",
+            deviceID: "test-phone-1",
+            deviceName: "iPhone",
             screenSize: CGSize(width: 400, height: 800),
             input: input,
             captureFrame: { _, _ in frame },
@@ -1029,7 +1029,7 @@ final class GhosthandInputParityTests: XCTestCase {
                 "/ocr",
                 body: ["min_confidence": 0.5, "content_only": true]
             ),
-            ocrCapture: { _, _ in ("hermes-1", frame) },
+            ocrCapture: { _, _ in ("test-phone-1", frame) },
             runtimeHooks: hooks
         )
         XCTAssertEqual(resp.status, 200)
@@ -1041,7 +1041,7 @@ final class GhosthandInputParityTests: XCTestCase {
         XCTAssertEqual(firstItem["source"] as? String, "pixels")
 
         // CLI subcommands for tap_icon, scroll_until, scroll_collect
-        let cliTapIcon = try CLIRunner.buildRequest(from: ["tap_icon", "WeChat", "-d", "Hermes"])
+        let cliTapIcon = try CLIRunner.buildRequest(from: ["tap_icon", "WeChat", "-d", "iPhone"])
         XCTAssertEqual(cliTapIcon.path, "/tap_icon")
         XCTAssertEqual(cliTapIcon.body["text"] as? String, "WeChat")
         XCTAssertEqual(cliTapIcon.body["icon"] as? Bool, true)

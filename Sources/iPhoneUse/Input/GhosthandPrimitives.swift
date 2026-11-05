@@ -774,8 +774,8 @@ struct GhosthandRuntimeHooks {
     let taskStore: TaskSessionStore
 
     init(
-        deviceID: String = "hermes-id",
-        deviceName: String = "Hermes",
+        deviceID: String = "phone-id",
+        deviceName: String = "iPhone",
         screenSize: CGSize = CGSize(width: 400, height: 800),
         input: DeviceInput,
         captureFrame: @escaping (_ png: Bool, _ maxEdge: Int?) throws -> Data,
