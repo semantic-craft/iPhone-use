@@ -330,6 +330,7 @@ enum ControlAPI {
                 ("GET", "/assistive-touch"), ("PUT", "/assistive-touch"), ("POST", "/assistive-touch"),
                 ("GET", "/assistivetouch"), ("POST", "/assistivetouch"),
                 ("GET", "/track"), ("POST", "/track"), ("POST", "/track/status"), ("POST", "/track/switch"),
+                ("GET", "/track/decide"), ("POST", "/track/decide"),
                 ("GET", "/tree"), ("GET", "/ax_tree"), ("POST", "/ax_tree"),
                 ("POST", "/task"), ("POST", "/v1/tasks"):
                 let leaseID = try parseOptionalLeaseID(rawLease)
@@ -1539,6 +1540,23 @@ enum ControlAPI {
                 "device": targetID,
                 "tree": tree,
             ])
+
+        case ("GET", "/track/decide"), ("POST", "/track/decide"):
+            let prompt = (params["prompt"] as? String) ?? (params["instruction"] as? String) ?? (params["task"] as? String) ?? ""
+            let app = (params["app"] as? String) ?? (params["bundle_id"] as? String)
+            let apply = PostActionOptions.parseBoolFlag(params["apply"]) ?? false
+            let decision = JevTrackRouter.shared.decide(prompt: prompt, appName: app)
+            var response: [String: Any] = [
+                "ok": true,
+                "decision": decision.json,
+            ]
+            if apply, let dev = try? DeviceRegistry.shared.find(deviceQuery) {
+                let coord = DeviceRegistry.shared.coordinator(for: dev)
+                coord.switchMode(decision.mode)
+                response["device"] = dev.id
+                response["track"] = coord.status.json
+            }
+            return .json(response)
 
         case ("POST", "/task"), ("POST", "/v1/tasks"):
             let taskOptions = try GeminiTaskExecutor.RequestOptions.parse(body: body, query: query)

@@ -15,7 +15,7 @@ _SPEC = importlib.util.spec_from_file_location(
 MCP_CALL = importlib.util.module_from_spec(_SPEC)
 _SPEC.loader.exec_module(MCP_CALL)
 
-EXPECTED_49_TOOLS = (
+EXPECTED_50_TOOLS = (
     "list_devices", "screenshot", "ocr_screen", "screentext", "tap_text",
     "move_pointer", "adjust_pointer", "click_pointer",
     "tap", "double_tap", "triple_tap", "hold", "long_press",
@@ -27,22 +27,22 @@ EXPECTED_49_TOOLS = (
     "photo_list", "photo_pull", "photo_delete", "photo_push",
     "file_list", "file_pull", "file_push", "file_remove",
     "app_list", "open_app", "device_info", "device_logs", "assistivetouch",
-    "task", "switch_track_mode", "get_track_status", "get_ax_tree",
+    "task", "switch_track_mode", "get_track_status", "get_ax_tree", "decide_track",
 )
 
-EXPECTED_14_READ_ONLY = {
+EXPECTED_15_READ_ONLY = {
     "list_devices", "screenshot", "ocr_screen", "screentext", "setup_status",
     "photo_list", "photo_pull", "file_list", "file_pull",
     "app_list", "device_info", "device_logs",
-    "get_track_status", "get_ax_tree",
+    "get_track_status", "get_ax_tree", "decide_track",
 }
 
 
 class DualInstallAndSkillTests(unittest.TestCase):
-    def test_mcp_call_exposes_all_49_tools_and_14_read_only_tools(self):
-        self.assertEqual(len(MCP_CALL.TOOLS), 49)
-        self.assertEqual(tuple(MCP_CALL.TOOLS), EXPECTED_49_TOOLS)
-        self.assertEqual(set(MCP_CALL.READ_ONLY), EXPECTED_14_READ_ONLY)
+    def test_mcp_call_exposes_all_50_tools_and_15_read_only_tools(self):
+        self.assertEqual(len(MCP_CALL.TOOLS), 50)
+        self.assertEqual(tuple(MCP_CALL.TOOLS), EXPECTED_50_TOOLS)
+        self.assertEqual(set(MCP_CALL.READ_ONLY), EXPECTED_15_READ_ONLY)
 
     def test_skill_markdown_documents_ghosthand_operational_rules(self):
         skill_md = (ROOT / "codex/skills/iphone-use/SKILL.md").read_text(encoding="utf-8")

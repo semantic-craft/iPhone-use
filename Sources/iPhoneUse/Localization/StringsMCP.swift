@@ -74,6 +74,7 @@ struct StringsMCP: LocalizedTable {
     let toolSwitchTrackMode: String
     let toolGetTrackStatus: String
     let toolGetAXTree: String
+    let toolDecideTrack: String
 
     // MCPToolRequest / MCPKeyboardSequence validation
     let unknownTool: (String) -> String
@@ -180,6 +181,7 @@ struct StringsMCP: LocalizedTable {
         toolSwitchTrackMode: "切换 iPhone 控制轨模式（standard: 免配置零售蓝牙键鼠轨，enhanced: 开发者直连高精度触控轨，auto: 自动优选开发者增强轨且在掉线时无缝降级）。",
         toolGetTrackStatus: "获取目标 iPhone 当前控制轨模式、激活状态、增强轨就绪性与降级原因。",
         toolGetAXTree: "通过增强控制轨直接抓取 iPhone 原生无障碍层级树（AX Tree）、前台应用与元素坐标结构（需开发者模式）。",
+        toolDecideTrack: "基于 TypeSafe Jev System One 决策模型与意图分析，评估用户任务并推荐最佳控制轨（standard/enhanced/auto），支持直接应用生效。",
         unknownTool: { "未知工具 \($0)" },
         coordinateFinite: { "\($0) 必须是有限且非负的截图坐标" },
         hidCountRange: { "\($0) 必须是 -32...32 内的整数 HID 计数" },
@@ -321,6 +323,8 @@ struct StringsMCP: LocalizedTable {
             "Get the current control track mode, active state, enhanced track readiness, and degradation reason for the iPhone.",
         toolGetAXTree:
             "Fetch the native iOS accessibility hierarchy tree (AX Tree), foreground app, and element frames via the enhanced control track (requires Developer Mode).",
+        toolDecideTrack:
+            "Evaluate user task intent using TypeSafe Jev System One decision engine and recommend optimal control track (standard/enhanced/auto), with optional immediate mode application.",
         unknownTool: { "unknown tool \($0)" },
         coordinateFinite: { "\($0) must be a finite, nonnegative screenshot coordinate" },
         hidCountRange: { "\($0) must be an integer HID count in -32...32" },

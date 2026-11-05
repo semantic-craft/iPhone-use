@@ -437,6 +437,15 @@ enum MCPToolCatalog {
                     "include_offscreen": ["type": "boolean", "default": false],
                     "device": device,
                 ], readOnly: true),
+            tool(
+                "decide_track",
+                table.toolDecideTrack,
+                [
+                    "prompt": ["type": "string", "description": "The user task or prompt to classify."],
+                    "app": ["type": "string", "description": "Optional app name or bundle ID."],
+                    "apply": ["type": "boolean", "default": false, "description": "Whether to directly switch the device to the recommended track mode."],
+                    "device": device,
+                ], required: ["prompt"]),
         ]
     }
 
@@ -832,6 +841,12 @@ struct MCPToolRequest {
             var body: [String: Any] = [:]
             if let inc = arguments["include_offscreen"] { body["include_offscreen"] = inc }
             return MCPToolRequest(path: "/ax_tree", body: withDevice(body, device))
+        case "decide_track":
+            let prompt = (arguments["prompt"] as? String) ?? ""
+            var body: [String: Any] = ["prompt": prompt]
+            if let app = arguments["app"] { body["app"] = app }
+            if let apply = arguments["apply"] { body["apply"] = apply }
+            return MCPToolRequest(path: "/track/decide", body: withDevice(body, device))
         default:
             return nil
         }

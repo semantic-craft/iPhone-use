@@ -200,6 +200,7 @@ enum MCPServer {
                     let isReadOnlyTool =
                         readOnlyNames.contains(name)
                         || ((name == "assistivetouch" || name == "assistive_touch") && arguments["enabled"] == nil)
+                        || (name == "decide_track" && (arguments["apply"] as? Bool) != true)
                     if leaseID != nil || !isReadOnlyTool {
                         do {
                             let store = try LeaseStore.current()
@@ -215,7 +216,7 @@ enum MCPServer {
                         "file_list", "file_pull", "file_push", "file_remove",
                         "app_list", "open_app", "device_info", "device_logs",
                         "assistivetouch", "assistive_touch", "task",
-                        "switch_track_mode", "get_track_status", "get_ax_tree",
+                        "switch_track_mode", "get_track_status", "get_ax_tree", "decide_track",
                     ]
                     let isStructuredScroll =
                         name == "scroll"
