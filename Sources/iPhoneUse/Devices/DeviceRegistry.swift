@@ -91,6 +91,7 @@ final class DeviceRegistry {
     private var verifiedAssociations: Set<Association> = []
 
     private let pairingStore = DevicePairingStore()
+    private var assistiveTouchAutoEnabledIDs: Set<String> = []
 
     func start() {
         load()
@@ -128,6 +129,30 @@ final class DeviceRegistry {
         }
         HIDPeripheral.shared.setUSBScreenDemand(snapshot.retainsUSBDemand, revision: snapshot.revision)
         reconnectSavedBluetoothHosts(for: snapshot.screens, resetExhausted: resetExhausted)
+        autoEnableAssistiveTouchIfNeeded(for: snapshot.screens)
+    }
+
+    private func autoEnableAssistiveTouchIfNeeded(for screens: [ScreenCaptureSession]) {
+        guard RuntimeEnvironment.isLiveHardwareAllowed() else { return }
+        let presentIDs = Set(screens.map(\.id))
+        assistiveTouchAutoEnabledIDs.formIntersection(presentIDs)
+        let newlyDiscovered = presentIDs.subtracting(assistiveTouchAutoEnabledIDs)
+        guard !newlyDiscovered.isEmpty else { return }
+        for screenID in newlyDiscovered {
+            assistiveTouchAutoEnabledIDs.insert(screenID)
+            DispatchQueue.global(qos: .utility).async {
+                _ = try? StateDirUSBSystemProvider.shared.setAssistiveTouch(deviceID: screenID, enabled: true)
+            }
+        }
+    }
+
+    /// Public trigger to force immediate BLE reconnect attempt for saved paired hosts.
+    func reconnectBluetooth(resetExhausted: Bool = true) {
+        matchQueue.async { [weak self] in
+            guard let self else { return }
+            let screens = ScreenCaptureManager.shared.all
+            self.reconnectSavedBluetoothHosts(for: screens, resetExhausted: resetExhausted)
+        }
     }
 
     /// Reconnects hosts that unexpectedly disconnected during idle, in parallel with USB resume.
