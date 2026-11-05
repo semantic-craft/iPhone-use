@@ -50,7 +50,7 @@ enum ControlAPI {
 
     /// Normalizes `/v1/leases/{lease}/<subpath>` or `/leases/{lease}/<subpath>` into
     /// `(normalizedPath, pathLeaseID)`.
-    private static func normalizeRoutePath(_ path: String) -> (path: String, pathLease: String?) {
+    static func normalizeRoutePath(_ path: String) -> (path: String, pathLease: String?) {
         for prefix in ["/v1/leases/", "/leases/"] where path.hasPrefix(prefix) {
             let remainder = String(path.dropFirst(prefix.count))
             guard let slashIndex = remainder.firstIndex(of: "/") else {
@@ -110,7 +110,7 @@ enum ControlAPI {
         let rawLease: Any? = leaseSelector(body: body, query: request.query) ?? (pathLease as Any?)
         if !passive {
             waitForWake(
-                request: request, deviceQuery: deviceQuery,
+                normalizedPath: normalizedPath, deviceQuery: deviceQuery,
                 wasSuspended: wasSuspended || activity.isWithinWakeGraceWindow)
         }
         do {
@@ -385,24 +385,41 @@ enum ControlAPI {
 
     private static let wakeWindow = WakeWindow()
 
-    private static func waitForWake(request: HTTPRequest, deviceQuery: String?, wasSuspended: Bool) {
+    static func shouldWakeScreen(normalizedPath: String) -> Bool {
+        let screenPaths: Set<String> = [
+            "/devices", "/status", "/", "/setup_status", "/v1/setup/status",
+            "/screenshot", "/ocr", "/screentext",
+        ]
+        return screenPaths.contains(normalizedPath) || shouldWakeControl(normalizedPath: normalizedPath)
+    }
+
+    static func shouldWakeControl(normalizedPath: String) -> Bool {
+        if Action.parse(path: normalizedPath) != nil {
+            return true
+        }
+        let extraControlPaths: Set<String> = [
+            "/tap_text", "/tap_icon", "/scroll_until", "/scroll_collect",
+            "/act", "/open_app", "/apps/open", "/task", "/v1/tasks",
+        ]
+        return extraControlPaths.contains(normalizedPath)
+    }
+
+    private static func waitForWake(normalizedPath: String, deviceQuery: String?, wasSuspended: Bool) {
         let deadline = wakeWindow.deadline(wasSuspended: wasSuspended, now: ProcessInfo.processInfo.systemUptime)
         guard ProcessInfo.processInfo.systemUptime < deadline else { return }
-        let screenPaths: Set<String> = ["/devices", "/status", "/", "/screenshot", "/ocr"]
-        let controlPaths: Set<String> = [
-            "/move", "/tap", "/tap_text", "/swipe", "/type", "/key", "/home", "/power", "/nudge", "/act",
-        ]
-        guard screenPaths.contains(request.path) || controlPaths.contains(request.path) else { return }
+        let isScreen = shouldWakeScreen(normalizedPath: normalizedPath)
+        let isControl = shouldWakeControl(normalizedPath: normalizedPath)
+        guard isScreen || isControl else { return }
         waitUntilReady(deadline: deadline) {
             if let target = try? DeviceRegistry.shared.find(deviceQuery) {
                 let frameReady = ScreenCaptureManager.shared.all.contains {
                     $0.id == target.screen.id && $0.size != nil
                 }
-                guard controlPaths.contains(request.path) else { return frameReady }
+                guard isControl else { return frameReady }
                 return frameReady && target.host != nil
                     && (try? DeviceRegistry.shared.input(for: target).isPointerReady) == true
             }
-            return deviceQuery == nil && !controlPaths.contains(request.path)
+            return deviceQuery == nil && !isControl
                 && !ScreenCaptureManager.shared.all.isEmpty
                 && ScreenCaptureManager.shared.all.allSatisfy { $0.size != nil }
         }
@@ -490,7 +507,7 @@ enum ControlAPI {
         if let device = try? DeviceRegistry.shared.find(query) {
             return DeviceCandidate(id: device.id, name: device.screen.name)
         }
-        if ProcessInfo.processInfo.environment["IPHONE_USE_STATE_DIR"] == nil,
+        if RuntimeEnvironment.isLiveHardwareAllowed(),
             let usbDevice = MobileDeviceLockdownBridge.findDevice(matching: query)
         {
             return DeviceCandidate(id: usbDevice.udid, name: usbDevice.name)
@@ -561,6 +578,9 @@ enum ControlAPI {
                 force: force
             )
         }
+        if RuntimeEnvironment.isLiveHardwareAllowed() {
+            _ = try? StateDirUSBSystemProvider.shared.setAssistiveTouch(deviceID: target.id, enabled: true)
+        }
         return .json(acquisition.json())
     }
 
@@ -570,7 +590,6 @@ enum ControlAPI {
         }
         let store = try LeaseStore.current()
         let released = try store.release(leaseID: leaseID)
-        XCTestDaemonBridge.shared.releaseCachedLease(forDeviceID: released?.screenCaptureID)
         return .json([
             "ok": true,
             "id": leaseID.description,
@@ -624,6 +643,16 @@ enum ControlAPI {
         }
     }
 
+    static func runningExecutableMtime() -> Int? {
+        guard let execURL = MCPServiceLauncher.resolveExecutableURL(),
+            let attrs = try? FileManager.default.attributesOfItem(atPath: execURL.path),
+            let date = attrs[.modificationDate] as? Date
+        else {
+            return nil
+        }
+        return Int(date.timeIntervalSince1970)
+    }
+
     private static func status() -> HTTPResponse {
         // Bluetooth detail is keyed by host so a phone's subscriptions and
         // pairing can be checked together when input goes to the wrong device.
@@ -643,21 +672,25 @@ enum ControlAPI {
             return info
         }
         var devices = DeviceRegistry.shared.status()
-        if devices.isEmpty && ProcessInfo.processInfo.environment["IPHONE_USE_STATE_DIR"] == nil {
+        if devices.isEmpty && RuntimeEnvironment.isLiveHardwareAllowed() {
             devices = fallbackUSBDeviceDictionaries(includePointer: true)
         }
-        return .json([
+        var payload: [String: Any] = [
             "bluetooth": HIDPeripheral.shared.state,
             "bluetoothHosts": hosts,
             "capture": captureStatus(),
             "devices": devices,
             "unmatchedHosts": DeviceRegistry.shared.unmatchedHosts().map(\.uuidString),
-        ])
+        ]
+        if let mtime = runningExecutableMtime() {
+            payload["binaryMtime"] = mtime
+        }
+        return .json(payload)
     }
 
     private static func deviceList() -> HTTPResponse {
         var devices = DeviceRegistry.shared.all().map(\.json)
-        if devices.isEmpty && ProcessInfo.processInfo.environment["IPHONE_USE_STATE_DIR"] == nil {
+        if devices.isEmpty && RuntimeEnvironment.isLiveHardwareAllowed() {
             devices = fallbackUSBDeviceDictionaries(includePointer: false)
         }
         return .json(["capture": captureStatus(), "devices": devices])
@@ -768,7 +801,7 @@ enum ControlAPI {
         let effectiveDeviceID: String
         if let resolvedDevice {
             effectiveDeviceID = resolvedDevice.id
-        } else if ProcessInfo.processInfo.environment["IPHONE_USE_STATE_DIR"] == nil,
+        } else if RuntimeEnvironment.isLiveHardwareAllowed(),
             let usbDevice = MobileDeviceLockdownBridge.findDevice(matching: deviceQuery)
         {
             effectiveDeviceID = usbDevice.udid
@@ -781,60 +814,35 @@ enum ControlAPI {
             try authorizeDeviceLease(deviceID: effectiveDeviceID, leaseID: leaseID, command: "screenshot")
         }
 
-        if resolvedDevice?.screen.size == nil {
-            if let xctestSnap = XCTestDaemonBridge.shared.captureScreenshot(
-                deviceID: effectiveDeviceID,
-                deviceName: resolvedDevice?.screen.name ?? deviceQuery ?? "",
+        if resolvedDevice?.screen.size == nil,
+            RuntimeEnvironment.isLiveHardwareAllowed(),
+            let usbDevice = MobileDeviceLockdownBridge.findDevice(
+                matching: resolvedDevice?.screen.name ?? deviceQuery)
+        {
+            let activeApp = StateDirUSBSystemProvider.shared.activeApp(for: effectiveDeviceID)
+            let rendered = MobileDeviceLockdownBridge.renderLiveHardwareScreenPNG(
+                for: usbDevice,
+                activeApp: activeApp,
                 maxWidth: maxWidth,
                 maxEdge: maxEdge
-            ) {
-                let size = xctestSnap.screenSize
-                let image = RequestCoordinates.imageSize(size, maxWidth: maxWidth, maxEdge: maxEdge)
-                var headers = [
-                    "X-Device": effectiveDeviceID,
-                    "X-Screen-Width": "\(Int(size.width))", "X-Screen-Height": "\(Int(size.height))",
-                    "X-Image-Width": "\(image.0)", "X-Image-Height": "\(image.1)",
-                ]
-                if isNative {
-                    headers["X-Note"] = "deleted"
-                }
-                if includeOCR {
-                    let ocr = ScreenOCR.recognize(xctestSnap.data, device: effectiveDeviceID)
-                    headers["X-Screen-OCR"] = try JSONSerialization.data(
-                        withJSONObject: ocr.json(device: effectiveDeviceID)
-                    ).base64EncodedString()
-                }
-                return HTTPResponse(contentType: "image/png", headers: headers, body: xctestSnap.data)
+            )
+            let size = rendered.screenSize
+            let image = RequestCoordinates.imageSize(size, maxWidth: maxWidth, maxEdge: maxEdge)
+            var headers = [
+                "X-Device": effectiveDeviceID,
+                "X-Screen-Width": "\(Int(size.width))", "X-Screen-Height": "\(Int(size.height))",
+                "X-Image-Width": "\(image.0)", "X-Image-Height": "\(image.1)",
+            ]
+            if isNative {
+                headers["X-Note"] = "deleted"
             }
-            if ProcessInfo.processInfo.environment["IPHONE_USE_STATE_DIR"] == nil,
-                let usbDevice = MobileDeviceLockdownBridge.findDevice(
-                    matching: resolvedDevice?.screen.name ?? deviceQuery)
-            {
-                let activeApp = StateDirUSBSystemProvider.shared.activeApp(for: effectiveDeviceID)
-                let rendered = MobileDeviceLockdownBridge.renderLiveHardwareScreenPNG(
-                    for: usbDevice,
-                    activeApp: activeApp,
-                    maxWidth: maxWidth,
-                    maxEdge: maxEdge
-                )
-                let size = rendered.screenSize
-                let image = RequestCoordinates.imageSize(size, maxWidth: maxWidth, maxEdge: maxEdge)
-                var headers = [
-                    "X-Device": effectiveDeviceID,
-                    "X-Screen-Width": "\(Int(size.width))", "X-Screen-Height": "\(Int(size.height))",
-                    "X-Image-Width": "\(image.0)", "X-Image-Height": "\(image.1)",
-                ]
-                if isNative {
-                    headers["X-Note"] = "deleted"
-                }
-                if includeOCR {
-                    let ocr = ScreenOCR.recognize(rendered.data, device: effectiveDeviceID)
-                    headers["X-Screen-OCR"] = try JSONSerialization.data(
-                        withJSONObject: ocr.json(device: effectiveDeviceID)
-                    ).base64EncodedString()
-                }
-                return HTTPResponse(contentType: "image/png", headers: headers, body: rendered.data)
+            if includeOCR {
+                let ocr = ScreenOCR.recognize(rendered.data, device: effectiveDeviceID)
+                headers["X-Screen-OCR"] = try JSONSerialization.data(
+                    withJSONObject: ocr.json(device: effectiveDeviceID)
+                ).base64EncodedString()
             }
+            return HTTPResponse(contentType: "image/png", headers: headers, body: rendered.data)
         }
 
         let device = try resolvedDevice ?? DeviceRegistry.shared.find(deviceQuery)
@@ -915,14 +923,7 @@ enum ControlAPI {
             if let data = device.screen.snapshot(png: true, maxEdge: maxEdge) {
                 return (device.id, data)
             }
-            if let xctestSnap = XCTestDaemonBridge.shared.captureScreenshot(
-                deviceID: device.id,
-                deviceName: device.screen.name,
-                maxEdge: maxEdge
-            ) {
-                return (device.id, xctestSnap.data)
-            }
-            if ProcessInfo.processInfo.environment["IPHONE_USE_STATE_DIR"] == nil,
+            if RuntimeEnvironment.isLiveHardwareAllowed(),
                 let usbDevice = MobileDeviceLockdownBridge.findDevice(matching: device.screen.name)
                     ?? MobileDeviceLockdownBridge.findDevice(matching: query)
             {
@@ -939,7 +940,7 @@ enum ControlAPI {
             }
             throw DeviceError(StringsAPI.current.noFrameFromDevice(device.screen.name))
         }
-        if ProcessInfo.processInfo.environment["IPHONE_USE_STATE_DIR"] == nil,
+        if RuntimeEnvironment.isLiveHardwareAllowed(),
             let usbDevice = MobileDeviceLockdownBridge.findDevice(matching: query)
         {
             let activeApp = StateDirUSBSystemProvider.shared.activeApp(for: usbDevice.udid)
@@ -963,20 +964,6 @@ enum ControlAPI {
     private static func tapTextPoint(_ id: String, _ x: Double, _ y: Double, _ hold: Double) throws {
         let device = try DeviceRegistry.shared.find(id)
         DeviceRegistry.shared.cancelBackgroundMotion(for: device)
-        if let input = try? DeviceRegistry.shared.input(for: device), input.isPointerReady {
-            try input.tap(x: x, y: y, hold: hold)
-            return
-        }
-        if XCTestDaemonBridge.shared.isXCTestActive(deviceID: device.id, deviceName: device.screen.name) {
-            try XCTestDaemonBridge.shared.performTap(
-                deviceID: device.id,
-                deviceName: device.screen.name,
-                normalizedX: x,
-                normalizedY: y,
-                screenSize: device.screen.size
-            )
-            return
-        }
         let input = try DeviceRegistry.shared.input(for: device)
         guard input.isPointerReady else {
             input.invalidatePointerEstimate()
@@ -1087,7 +1074,7 @@ enum ControlAPI {
                 provider: StateDirUSBSystemProvider.shared
             )
         }
-        if ProcessInfo.processInfo.environment["IPHONE_USE_STATE_DIR"] != nil {
+        if !RuntimeEnvironment.isLiveHardwareAllowed() {
             let fallbackID = deviceQuery ?? "hermes-id"
             try authorizeDeviceLease(deviceID: fallbackID, leaseID: leaseID, command: command)
             return (
@@ -1629,150 +1616,6 @@ enum ControlAPI {
             // Cancel before resolving/queuing input, so it cannot wait behind the
             // very measurement that the user is trying to interrupt.
             DeviceRegistry.shared.cancelBackgroundMotion(for: device)
-            let resolvedInput = try? DeviceRegistry.shared.input(for: device)
-            let canUseBluetooth =
-                resolvedInput != nil
-                && (!action.requiresPointer || resolvedInput!.isPointerReady)
-            if !canUseBluetooth,
-                XCTestDaemonBridge.shared.isXCTestActive(deviceID: targetID, deviceName: targetScreenName)
-            {
-                let effectiveScreenSize = targetScreenSize ?? CGSize(width: 1320, height: 2868)
-                var responsePayload: [String: Any] = ["ok": true, "device": targetID]
-                switch action {
-                case .tap:
-                    let resolved = try resolvePointOrText(
-                        body, deviceID: targetID, deviceQuery: deviceQuery,
-                        screenSize: effectiveScreenSize, screenName: targetScreenName,
-                        ocrCapture: ocrCapture, runtimeHooks: runtimeHooks)
-                    try XCTestDaemonBridge.shared.performTap(
-                        deviceID: targetID, deviceName: targetScreenName,
-                        pathSubroute: "tap", normalizedX: resolved.x, normalizedY: resolved.y,
-                        screenSize: effectiveScreenSize)
-                    if let matched = resolved.matchedItem {
-                        responsePayload["text"] = matched.text
-                        responsePayload["x"] = resolved.targetPixel?.x ?? matched.x
-                        responsePayload["y"] = resolved.targetPixel?.y ?? matched.y
-                    }
-                case .doubleTap:
-                    let resolved = try resolvePointOrText(
-                        body, deviceID: targetID, deviceQuery: deviceQuery,
-                        screenSize: effectiveScreenSize, screenName: targetScreenName,
-                        ocrCapture: ocrCapture, runtimeHooks: runtimeHooks)
-                    try XCTestDaemonBridge.shared.performTap(
-                        deviceID: targetID, deviceName: targetScreenName,
-                        pathSubroute: "double-tap", normalizedX: resolved.x, normalizedY: resolved.y,
-                        screenSize: effectiveScreenSize)
-                    if let matched = resolved.matchedItem {
-                        responsePayload["text"] = matched.text
-                        responsePayload["x"] = resolved.targetPixel?.x ?? matched.x
-                        responsePayload["y"] = resolved.targetPixel?.y ?? matched.y
-                    }
-                case .tripleTap:
-                    let resolved = try resolvePointOrText(
-                        body, deviceID: targetID, deviceQuery: deviceQuery,
-                        screenSize: effectiveScreenSize, screenName: targetScreenName,
-                        ocrCapture: ocrCapture, runtimeHooks: runtimeHooks)
-                    try XCTestDaemonBridge.shared.performTap(
-                        deviceID: targetID, deviceName: targetScreenName,
-                        pathSubroute: "triple-tap", normalizedX: resolved.x, normalizedY: resolved.y,
-                        screenSize: effectiveScreenSize)
-                    if let matched = resolved.matchedItem {
-                        responsePayload["text"] = matched.text
-                        responsePayload["x"] = resolved.targetPixel?.x ?? matched.x
-                        responsePayload["y"] = resolved.targetPixel?.y ?? matched.y
-                    }
-                case .hold:
-                    let durationSeconds = try parseHoldDurationSeconds(body)
-                    let resolved = try resolvePointOrText(
-                        body, deviceID: targetID, deviceQuery: deviceQuery,
-                        screenSize: effectiveScreenSize, screenName: targetScreenName,
-                        ocrCapture: ocrCapture, runtimeHooks: runtimeHooks)
-                    try XCTestDaemonBridge.shared.performHold(
-                        deviceID: targetID, deviceName: targetScreenName,
-                        normalizedX: resolved.x, normalizedY: resolved.y,
-                        durationSeconds: durationSeconds, screenSize: effectiveScreenSize)
-                    if let matched = resolved.matchedItem {
-                        responsePayload["text"] = matched.text
-                        responsePayload["x"] = resolved.targetPixel?.x ?? matched.x
-                        responsePayload["y"] = resolved.targetPixel?.y ?? matched.y
-                    }
-                case .swipe:
-                    let swipe = try SwipeRequest(body, screenSize: effectiveScreenSize, screenName: targetScreenName)
-                    if let first = swipe.points.first, let last = swipe.points.last {
-                        try XCTestDaemonBridge.shared.performSwipe(
-                            deviceID: targetID, deviceName: targetScreenName,
-                            from: first, to: last, pathSubroute: "swipe",
-                            screenSize: effectiveScreenSize)
-                    }
-                case .holdDrag:
-                    let holdDrag = try parseHoldDragRequest(
-                        body, screenSize: effectiveScreenSize, screenName: targetScreenName)
-                    try XCTestDaemonBridge.shared.performSwipe(
-                        deviceID: targetID, deviceName: targetScreenName,
-                        from: holdDrag.from, to: holdDrag.to, pathSubroute: "hold-drag",
-                        screenSize: effectiveScreenSize)
-                case .scroll:
-                    let scrollReq = try parseScrollRequest(
-                        body, screenSize: effectiveScreenSize, screenName: targetScreenName)
-                    if let listScrollResponse = try executeListScrollIfNeeded(
-                        body: body,
-                        direction: scrollReq.direction,
-                        deviceID: targetID,
-                        deviceQuery: deviceQuery,
-                        performOneScroll: {
-                            try XCTestDaemonBridge.shared.performScroll(
-                                deviceID: targetID, deviceName: targetScreenName,
-                                direction: scrollReq.direction.rawValue, ticks: scrollReq.ticks,
-                                at: scrollReq.at, screenSize: effectiveScreenSize)
-                        },
-                        ocrCapture: ocrCapture,
-                        runtimeHooks: runtimeHooks
-                    ) {
-                        responsePayload.merge(listScrollResponse) { _, new in new }
-                    } else {
-                        try XCTestDaemonBridge.shared.performScroll(
-                            deviceID: targetID, deviceName: targetScreenName,
-                            direction: scrollReq.direction.rawValue, ticks: scrollReq.ticks,
-                            at: scrollReq.at, screenSize: effectiveScreenSize)
-                    }
-                case .type:
-                    guard let text = body["text"] as? String else {
-                        return .error(StringsAPI.current.textRequired)
-                    }
-                    let enter = PostActionOptions.parseBoolFlag(body["enter"]) ?? false
-                    try XCTestDaemonBridge.shared.performType(
-                        deviceID: targetID, deviceName: targetScreenName,
-                        text: text, enter: enter)
-                case .key:
-                    guard let key = body["key"] as? String else {
-                        return .error(StringsAPI.current.keyRequired)
-                    }
-                    if key.trimmingCharacters(in: .whitespacesAndNewlines)
-                        .caseInsensitiveCompare("mute") == .orderedSame
-                    {
-                        throw GhosthandError.invalidArgument(
-                            "mute is excluded from key; use /mute or /unmute so ringer state is verified over USB"
-                        )
-                    }
-                    try XCTestDaemonBridge.shared.performKey(
-                        deviceID: targetID, deviceName: targetScreenName,
-                        key: key, modifiers: (body["modifiers"] as? [String]) ?? [])
-                case .home:
-                    try XCTestDaemonBridge.shared.performKey(
-                        deviceID: targetID, deviceName: targetScreenName, key: "home")
-                default:
-                    throw GhosthandError.unavailable(
-                        code: "unsupported-in-mode",
-                        message: "Action \(action.rawValue) is not available in XCTest mode without Bluetooth."
-                    )
-                }
-                if action != .lock {
-                    try attachPostActionObservationIfNeeded(
-                        to: &responsePayload, options: postOptions, deviceID: targetID,
-                        effectiveQuery: deviceQuery, ocrCapture: ocrCapture, runtimeHooks: runtimeHooks)
-                }
-                return .json(responsePayload)
-            }
             input = try DeviceRegistry.shared.input(for: device)
             isLockedCheck = {
                 let state = device.lockState

@@ -122,9 +122,33 @@ def wait_for_device(service, device, seconds):
         time.sleep(min(0.5, max(0, deadline - time.monotonic())))
 
 
+def is_stale_binary(service, status):
+    if not isinstance(status, dict):
+        return False
+    running_mtime = status.get("binaryMtime")
+    if not isinstance(running_mtime, int) or isinstance(running_mtime, bool):
+        return False
+    try:
+        disk_mtime = int(service.binary.stat().st_mtime)
+    except OSError:
+        return False
+    return disk_mtime != running_mtime
+
+
 def recover(service, device=None, wait=15):
     status = service.snapshot()
     actions = []
+    if is_stale_binary(service, status):
+        if not service.binary.is_file() or not os.access(service.binary, os.X_OK):
+            raise RecoveryError(f"Build the GUI first: swift build --package-path {service.repo} -c {service.config}")
+        pids = service.listeners()
+        if pids:
+            service.stop(pids)
+            actions.append("restarted")
+        else:
+            actions.append("started")
+        service.start()
+        status = wait_for_device(service, device, wait)
     if not has_device(status, device):
         # Allow normal USB discovery/reconnection before disrupting a running GUI.
         if status is not None:

@@ -241,38 +241,32 @@ enum SetupReadiness {
 
         var snapshots: [SetupInputs.PhoneSnapshot] = devices.map { device in
             let pointerReady: Bool
-            let xctestReady: Bool
             if let host = device.host {
                 let status = DeviceRegistry.shared.input(for: host, screen: device.screen).pointerStatus
                 let readyFlag = (status["ready"] as? Bool) ?? false
                 pointerReady =
                     readyFlag
                     && ScreenCaptureManager.shared.permitsPointerAssociation(for: device.screen)
-                xctestReady = false
             } else {
-                xctestReady = XCTestDaemonBridge.shared.isXCTestActive(
-                    deviceID: device.id, deviceName: device.screen.name)
-                pointerReady = xctestReady
+                pointerReady = false
             }
             let waiters = (try? leaseStore?.waiters(forDeviceID: device.id)) ?? []
             return SetupInputs.PhoneSnapshot(
                 id: device.id,
                 name: device.screen.name,
                 trusted: true,
-                hasFrame: device.screen.frame() != nil || xctestReady,
-                captureError: xctestReady ? nil : device.screen.captureError,
-                lockState: xctestReady ? .notDetected : device.lockState,
-                bluetoothState: xctestReady ? .connected : device.bluetoothState,
-                hasSavedPairing: savedPairings[device.id] != nil || device.host != nil || xctestReady,
+                hasFrame: device.screen.frame() != nil,
+                captureError: device.screen.captureError,
+                lockState: device.lockState,
+                bluetoothState: device.bluetoothState,
+                hasSavedPairing: savedPairings[device.id] != nil || device.host != nil,
                 pointerReady: pointerReady,
                 activeLease: activeLeases[device.id],
                 waiting: waiters
             )
         }
 
-        if snapshots.isEmpty
-            && ProcessInfo.processInfo.environment["IPHONE_USE_STATE_DIR"] == nil
-        {
+        if snapshots.isEmpty && RuntimeEnvironment.isLiveHardwareAllowed() {
             for usbPhone in MobileDeviceLockdownBridge.attachedDevices() {
                 let waiters = (try? leaseStore?.waiters(forDeviceID: usbPhone.udid)) ?? []
                 let hasBT = !usbPhone.bluetoothAddress.isEmpty || savedPairings[usbPhone.udid] != nil

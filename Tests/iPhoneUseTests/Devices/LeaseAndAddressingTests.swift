@@ -658,4 +658,49 @@ final class LeaseAndAddressingTests: XCTestCase {
         // Verify the daemon was only spawned once across all three tool calls.
         XCTAssertEqual(spawnedArguments.count, 1)
     }
+
+    func testRuntimeEnvironmentAndWakeRoutingInvariants() throws {
+        XCTAssertTrue(RuntimeEnvironment.isLiveHardwareAllowed(environment: [:]))
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        XCTAssertTrue(
+            RuntimeEnvironment.isLiveHardwareAllowed(
+                environment: ["IPHONE_USE_STATE_DIR": "\(home)/Library/Logs/iPhoneUse"]
+            )
+        )
+        XCTAssertTrue(
+            RuntimeEnvironment.isLiveHardwareAllowed(
+                environment: ["IPHONE_USE_STATE_DIR": "\(home)/Library/Application Support/iPhoneUse"]
+            )
+        )
+        XCTAssertFalse(
+            RuntimeEnvironment.isLiveHardwareAllowed(
+                environment: ["IPHONE_USE_STATE_DIR": "/tmp/iphone-use-test-123"]
+            )
+        )
+        XCTAssertFalse(
+            RuntimeEnvironment.isLiveHardwareAllowed(
+                environment: [
+                    "IPHONE_USE_STATE_DIR": "\(home)/Library/Logs/iPhoneUse",
+                    "IPHONE_USE_HERMETIC_TEST": "1",
+                ]
+            )
+        )
+        XCTAssertFalse(
+            RuntimeEnvironment.isLiveHardwareAllowed(
+                environment: ["XCTestConfigurationFilePath": "/tmp/test.xctestconfiguration"]
+            )
+        )
+
+        for screenRoute in ["/status", "/devices", "/setup_status", "/v1/setup/status", "/screentext", "/ocr", "/screenshot"] {
+            let (norm, _) = ControlAPI.normalizeRoutePath(screenRoute)
+            XCTAssertTrue(ControlAPI.shouldWakeScreen(normalizedPath: norm), "Expected screen wake for \(screenRoute)")
+        }
+        for controlRoute in ["/tap", "/double_tap", "/triple_tap", "/hold", "/hold_drag", "/scroll", "/wake", "/unlock", "/v1/leases/42/tap", "/v1/leases/42/double_tap"] {
+            let (norm, _) = ControlAPI.normalizeRoutePath(controlRoute)
+            XCTAssertTrue(ControlAPI.shouldWakeControl(normalizedPath: norm), "Expected control wake for \(controlRoute)")
+            XCTAssertTrue(ControlAPI.shouldWakeScreen(normalizedPath: norm), "Expected screen wake for \(controlRoute)")
+        }
+        XCTAssertFalse(ControlAPI.shouldWakeControl(normalizedPath: "/config"))
+        XCTAssertFalse(ControlAPI.shouldWakeScreen(normalizedPath: "/config"))
+    }
 }

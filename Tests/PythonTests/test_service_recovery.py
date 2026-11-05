@@ -64,6 +64,15 @@ class RecoveryTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(service.events, [])
 
+    def test_stale_binary_mtime_triggers_restart(self):
+        stale_ready = dict(READY, binaryMtime=100)
+        fresh_ready = dict(READY, binaryMtime=int(SCRIPT.stat().st_mtime))
+        service = FakeService([stale_ready, fresh_ready], running=True)
+        result = recovery.recover(service, wait=0)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["actions"], ["restarted"])
+        self.assertEqual(service.events, [("stop", {123}), ("start",)])
+
     def test_missing_app_starts_and_waits_for_device(self):
         service = FakeService([None, READY])
         result = recovery.recover(service, wait=0)

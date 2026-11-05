@@ -41,7 +41,8 @@ description: "通过本地 iphone-use MCP 服务操作已连接的真实 iPhone�
    - **OCR 置信度与内容区过滤**：`ocr_screen` 与 `screentext` 支持 `min_confidence: 0.5`（过滤低置信度噪点）与 `content_only: true`（仅保留中部内容区文本，剔除状态栏与底部横条），每条 OCR 结果均携带 `"source": "pixels"` 溯源标记。
 4. **锁屏密码 `unlock` 绝不重试铁律**：`unlock(passcode)` 若报错或未能进入主屏，**绝对禁止重试第二次**（连续输错密码会导致真机永久停用锁死），必须立即停止并交由人工处理。
 5. **原生高清截图 `screenshot(native: true)`**：常规观察用默认 USB 采集流 `screenshot`；当用户明确需要保存在相册级清晰度的原生截图时，传 `screenshot(native: true)`（通过 HID `Cmd+Shift+3` 触发并经 USB 读取后自动清理相机胶卷原图，响应带 `X-Note: deleted`）。
-6. **单回合多步 Python 组合脚本（`iphone-use exec` / `phone_exec.py`）**：当任务包含条件分支、循环抓取或需要沉淀可复用的应用级辅助函数时，可使用 `phone_exec.py`（或 CLI `iphone-use exec <<'PY'`）在单次调用内组合 `open_app`、`tap_text`、`tap_icon`、`scroll_until`、`scroll_collect`、`wait_for_text`、`screen` 等原语，并可将常用流程保存在 `~/.iphone-use/agent-workspace/agent_helpers.py` 跨会话自动加载：
+6. **消息发送与输入框清空铁律（`submit: true`）**：在微信、iMessage、搜索框等文本提交场景中，**绝对禁止盲目点击输入框右侧坐标**（真机连接外接蓝牙键盘时，右下角通常是功能菜单 `+`，点击只会展开相册/拍摄面板并让文字滞留在输入框）。发送文字必须使用 `type_text(text: "...", submit: true)` 原子化完成候选词上屏与回车提交；发送后必须核验输入框已清空且消息已在聊天区域上屏，严禁将输入框内未发出的文本误判为发送成功。
+7. **单回合多步 Python 组合脚本（`iphone-use exec` / `phone_exec.py`）**：当任务包含条件分支、循环抓取或需要沉淀可复用的应用级辅助函数时，可使用 `phone_exec.py`（或 CLI `iphone-use exec <<'PY'`）在单次调用内组合 `open_app`、`tap_text`、`tap_icon`、`scroll_until`、`scroll_collect`、`wait_for_text`、`screen` 等原语，并可将常用流程保存在 `~/.iphone-use/agent-workspace/agent_helpers.py` 跨会话自动加载：
    ```bash
    python3 <skill_dir>/scripts/phone_exec.py <<'PY'
    open_app("Settings", wait_text="General")

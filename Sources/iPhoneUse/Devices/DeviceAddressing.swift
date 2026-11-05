@@ -63,3 +63,36 @@ enum DeviceAddressing {
         }
     }
 }
+
+/// Single source of truth for whether the current process is allowed to probe live USB/Bluetooth hardware
+/// vs. running in a hermetic unit/integration test state directory.
+enum RuntimeEnvironment {
+    static func isLiveHardwareAllowed(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        if let flag = environment["IPHONE_USE_HERMETIC_TEST"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+            flag == "1" || flag == "true" || flag == "yes"
+        {
+            return false
+        }
+        if environment["XCTestConfigurationFilePath"] != nil
+            || environment["XCTestSessionIdentifier"] != nil
+            || environment["XCTestBundlePath"] != nil
+        {
+            return false
+        }
+        guard let rawDir = environment["IPHONE_USE_STATE_DIR"]?.trimmingCharacters(in: .whitespacesAndNewlines),
+            !rawDir.isEmpty
+        else {
+            return true
+        }
+        let standardized = URL(fileURLWithPath: rawDir).standardizedFileURL.path
+        let home = URL(fileURLWithPath: NSHomeDirectory()).standardizedFileURL.path
+        let prodLogs = URL(fileURLWithPath: home)
+            .appendingPathComponent("Library/Logs/iPhoneUse").standardizedFileURL.path
+        let prodAppSupport = URL(fileURLWithPath: home)
+            .appendingPathComponent("Library/Application Support/iPhoneUse").standardizedFileURL.path
+        return standardized == prodLogs || standardized == prodAppSupport
+    }
+}

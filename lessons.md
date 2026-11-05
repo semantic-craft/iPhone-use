@@ -1,0 +1,13 @@
+# Project Lessons & Structural Enforcement (`iphone-use`)
+
+Each recurring mistake class is encoded at the highest level that catches it before a human sees it, paired with an automated check run by `scripts/check`.
+
+## Structural Rule Table
+
+| Mistake Class | Rule | Enforced By |
+| --- | --- | --- |
+| Conflating `IPHONE_USE_STATE_DIR` with hermetic test mode | Never compare `environment["IPHONE_USE_STATE_DIR"]` against `nil` to decide whether live USB/Lockdown hardware probing is allowed. Call `RuntimeEnvironment.isLiveHardwareAllowed(environment:)` in `Sources/iPhoneUse/Devices/DeviceAddressing.swift`. | `scripts/lint-structure.py` (`STATE_DIR_NIL_RE` + `--selftest`) and `LeaseAndAddressingTests.testRuntimeEnvironmentAndWakeRoutingInvariants` |
+| Hand-synced route sets in `ControlAPI.waitForWake` | Derive control wake routes from `Action.parse(path: normalizedPath)` on the normalized path (after stripping `/v1/leases/{id}`), and include `/setup_status`, `/v1/setup/status`, and `/screentext` in `shouldWakeScreen(normalizedPath:)`. | `scripts/lint-structure.py` (`WAKE_ACTION_PARSE_RE` + `--selftest`) and `LeaseAndAddressingTests.testRuntimeEnvironmentAndWakeRoutingInvariants` |
+| Stale resident daemon binary on port `7390` after rebuild | `GET /status` reports `"binaryMtime"`, and `codex/skills/iphone-use/scripts/ensure_service.py` restarts the running listener when `binaryMtime` differs from `.build/<config>/iphone-use` on disk. | `Tests/PythonTests/test_service_recovery.py` (`test_stale_binary_mtime_triggers_restart`) |
+| Stranding text in messaging input box by guessing bottom-right click coordinates | Do not click arbitrary coordinates to send messages in hardware keyboard mode. Use `type_text(..., submit: true)` or atomic `press_enter: true` after IME commit (`space`). | `TextEntry.textOptions` (`submit: true` support) and `HTTPAPITests.testSubmitOptionEmitsOrderedCommitAndEnterReports` |
+| Coupling to external `~/.ghosthand/daemon.sock` or manual AssistiveTouch toggle | Do not reference `~/.ghosthand/daemon.sock` in `Sources/`. Auto-enable AssistiveTouch over USB (`StateDirUSBSystemProvider.shared.setAssistiveTouch`) during lease acquisition when `RuntimeEnvironment.isLiveHardwareAllowed()` is true. | `scripts/lint-structure.py` (`GHOSTHAND_SOCK_RE` + `--selftest`) |

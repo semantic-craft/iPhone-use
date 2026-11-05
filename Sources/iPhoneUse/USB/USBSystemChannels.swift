@@ -998,7 +998,7 @@ final class StateDirUSBSystemProvider: USBSystemProvider {
 
     func deviceInfo(deviceID: String, deviceName: String, isLocked: Bool) throws -> USBDeviceInfo {
         let env = environmentProvider()
-        if env["IPHONE_USE_STATE_DIR"] == nil,
+        if RuntimeEnvironment.isLiveHardwareAllowed(environment: env),
             let live = MobileDeviceLockdownBridge.findDevice(matching: deviceName)
                 ?? MobileDeviceLockdownBridge.findDevice(matching: deviceID)
         {
@@ -1099,7 +1099,7 @@ final class StateDirUSBSystemProvider: USBSystemProvider {
 
     func getAssistiveTouch(deviceID: String) throws -> Bool {
         let env = environmentProvider()
-        if env["IPHONE_USE_STATE_DIR"] == nil,
+        if RuntimeEnvironment.isLiveHardwareAllowed(environment: env),
             let liveEnabled = MobileDeviceLockdownBridge.getAssistiveTouch(matching: deviceID)
         {
             return liveEnabled
@@ -1119,7 +1119,7 @@ final class StateDirUSBSystemProvider: USBSystemProvider {
 
     func setAssistiveTouch(deviceID: String, enabled: Bool) throws -> Bool {
         let env = environmentProvider()
-        if env["IPHONE_USE_STATE_DIR"] == nil {
+        if RuntimeEnvironment.isLiveHardwareAllowed(environment: env) {
             _ = MobileDeviceLockdownBridge.setAssistiveTouch(matching: deviceID, enabled: enabled)
         }
         lock.lock()

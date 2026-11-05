@@ -113,7 +113,9 @@ enum MCPServiceLauncher {
 
         var childEnv = environment
         childEnv["IPHONE_USE_PORT"] = String(port)
-        childEnv["IPHONE_USE_STATE_DIR"] = resolvedStateDir.path
+        if let stateDirectory {
+            childEnv["IPHONE_USE_STATE_DIR"] = stateDirectory.path
+        }
 
         let effectiveSpawn = spawn ?? testSpawnerOverride ?? defaultSpawn
         do {
