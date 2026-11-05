@@ -1444,7 +1444,7 @@ enum MobileDeviceLockdownBridge {
         }) {
             return prefix
         }
-        if trimmed.lowercased().hasPrefix("5428f373"), devices.count == 1 {
+        if devices.count == 1 {
             return devices.first
         }
         return nil

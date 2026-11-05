@@ -680,15 +680,15 @@ final class USBAndGeminiTaskTests: XCTestCase {
         )
 
         let snapshot = MobileDeviceLockdownSnapshot(
-            udid: "00008150-00196D0E0A43401C",
-            name: "Hermes",
+            udid: "00008150-0000000000000001",
+            name: "MockiPhone",
             productType: "iPhone18,2",
             modelName: "iPhone 17 Pro Max",
             iosVersion: "27.0.1",
             build: "24A446",
-            serialNumber: "L6RWYM4LJN",
-            wifiAddress: "3C:FB:02:42:6F:F7",
-            bluetoothAddress: "3C:FB:02:44:4E:B7",
+            serialNumber: "DEMOSERIAL001",
+            wifiAddress: "02:00:00:00:00:01",
+            bluetoothAddress: "02:00:00:00:00:02",
             timeZone: "Asia/Shanghai",
             passwordProtected: false,
             trusted: true,
@@ -711,7 +711,7 @@ final class USBAndGeminiTaskTests: XCTestCase {
         XCTAssertFalse(homeRendered.data.isEmpty)
         let homeOCR = ScreenOCR.recognize(homeRendered.data, device: snapshot.udid)
         let homeTexts = homeOCR.items.map(\.text).joined(separator: " ")
-        XCTAssertTrue(homeTexts.contains("Hermes"), "Got OCR: \(homeTexts)")
+        XCTAssertTrue(homeTexts.contains("MockiPhone"), "Got OCR: \(homeTexts)")
         XCTAssertTrue(homeTexts.contains("TikTok"), "Got OCR: \(homeTexts)")
 
         let publishRendered = MobileDeviceLockdownBridge.renderLiveHardwareScreenPNG(
