@@ -25,12 +25,13 @@ TOOLS = (
     "photo_list", "photo_pull", "photo_delete", "photo_push",
     "file_list", "file_pull", "file_push", "file_remove",
     "app_list", "open_app", "device_info", "device_logs", "assistivetouch",
-    "task",
+    "task", "switch_track_mode", "get_track_status", "get_ax_tree",
 )
 READ_ONLY = {
     "list_devices", "screenshot", "ocr_screen", "screentext", "setup_status",
     "photo_list", "photo_pull", "file_list", "file_pull",
     "app_list", "device_info", "device_logs",
+    "get_track_status", "get_ax_tree",
 }
 
 

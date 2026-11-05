@@ -71,6 +71,9 @@ struct StringsMCP: LocalizedTable {
     let toolDeviceLogs: String
     let toolAssistiveTouch: String
     let toolTask: String
+    let toolSwitchTrackMode: String
+    let toolGetTrackStatus: String
+    let toolGetAXTree: String
 
     // MCPToolRequest / MCPKeyboardSequence validation
     let unknownTool: (String) -> String
@@ -174,6 +177,9 @@ struct StringsMCP: LocalizedTable {
         toolDeviceLogs: "通过 USB 采集 iPhone syslog 日志，支持按秒数、行数与关键字过滤。",
         toolAssistiveTouch: "通过 USB 查询或设置 iPhone AssistiveTouch（辅助触控）开关状态。",
         toolTask: "基于 Gemini 3.8 Flash Interactions API（mobile computer_use，0..999 归一化坐标，previous_interaction_id 续接，thinking_level 调节与 yield_to_user 敏感动作守卫）执行或续接自然语言多步任务。",
+        toolSwitchTrackMode: "切换 iPhone 控制轨模式（standard: 免配置零售蓝牙键鼠轨，enhanced: 开发者直连高精度触控轨，auto: 自动优选开发者增强轨且在掉线时无缝降级）。",
+        toolGetTrackStatus: "获取目标 iPhone 当前控制轨模式、激活状态、增强轨就绪性与降级原因。",
+        toolGetAXTree: "通过增强控制轨直接抓取 iPhone 原生无障碍层级树（AX Tree）、前台应用与元素坐标结构（需开发者模式）。",
         unknownTool: { "未知工具 \($0)" },
         coordinateFinite: { "\($0) 必须是有限且非负的截图坐标" },
         hidCountRange: { "\($0) 必须是 -32...32 内的整数 HID 计数" },
@@ -309,6 +315,12 @@ struct StringsMCP: LocalizedTable {
             "Get or set the iPhone AssistiveTouch accessibility state over USB.",
         toolTask:
             "Run or resume an autonomous multi-step natural-language task using Gemini 3.8 Flash Interactions API (mobile computer_use, 0..999 normalized coordinates, previous_interaction_id continuation, thinking_level, and yield_to_user confirmation guard).",
+        toolSwitchTrackMode:
+            "Switch iPhone control track mode (standard: zero-config retail BLE HID track, enhanced: developer direct high-precision touch track, auto: prefer developer enhanced track with seamless fallback to standard on dropout).",
+        toolGetTrackStatus:
+            "Get the current control track mode, active state, enhanced track readiness, and degradation reason for the iPhone.",
+        toolGetAXTree:
+            "Fetch the native iOS accessibility hierarchy tree (AX Tree), foreground app, and element frames via the enhanced control track (requires Developer Mode).",
         unknownTool: { "unknown tool \($0)" },
         coordinateFinite: { "\($0) must be a finite, nonnegative screenshot coordinate" },
         hidCountRange: { "\($0) must be an integer HID count in -32...32" },

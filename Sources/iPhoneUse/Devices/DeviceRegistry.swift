@@ -26,6 +26,8 @@ struct Device {
                 info["waiting"] = waiters.map { $0.json() }
             }
         }
+        let coord = DeviceRegistry.shared.coordinator(for: self)
+        info["track"] = coord.status.json
         return info
     }
 }
@@ -59,6 +61,7 @@ final class DeviceRegistry {
         case recovered([String: UUID])
     }
     private var inputs: [UUID: CachedInput] = [:]
+    private var coordinators: [String: DualTrackInputCoordinator] = [:]
     private var matchPending = false
     private let matchQueue = DispatchQueue(label: "iphone-use.match")
     /// Accessed only by matchQueue (and its synchronous probe callbacks).
@@ -335,6 +338,28 @@ final class DeviceRegistry {
             inputs[host] = CachedInput(
                 input: input, screenID: screenID, screenObject: screen.map(ObjectIdentifier.init))
             return input
+        }
+    }
+
+    func coordinator(for device: Device) -> DualTrackInputCoordinator {
+        inputLock.withLock {
+            let devID = device.id
+            if let existing = coordinators[devID] {
+                return existing
+            }
+            let coordinator = DualTrackInputCoordinator(
+                udid: devID,
+                mode: .auto,
+                standardInputResolver: { [weak self] in
+                    guard let self else {
+                        throw DeviceError("Device registry unavailable")
+                    }
+                    let dev = try self.find(devID)
+                    return try self.input(for: dev)
+                }
+            )
+            coordinators[devID] = coordinator
+            return coordinator
         }
     }
 

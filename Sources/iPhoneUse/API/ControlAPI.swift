@@ -329,6 +329,8 @@ enum ControlAPI {
                 ("GET", "/logs"), ("GET", "/device_logs"), ("POST", "/device_logs"),
                 ("GET", "/assistive-touch"), ("PUT", "/assistive-touch"), ("POST", "/assistive-touch"),
                 ("GET", "/assistivetouch"), ("POST", "/assistivetouch"),
+                ("GET", "/track"), ("POST", "/track"), ("POST", "/track/status"), ("POST", "/track/switch"),
+                ("GET", "/tree"), ("GET", "/ax_tree"), ("POST", "/ax_tree"),
                 ("POST", "/task"), ("POST", "/v1/tasks"):
                 let leaseID = try parseOptionalLeaseID(rawLease)
                 let effectiveQuery = try resolveEffectiveDeviceQuery(deviceQuery, leaseID: leaseID)
@@ -1450,6 +1452,94 @@ enum ControlAPI {
                 "enabled": current,
             ])
 
+        case ("GET", "/track"), ("POST", "/track/status"):
+            let targetID: String
+            if let dev = try? DeviceRegistry.shared.find(deviceQuery) {
+                targetID = dev.id
+            } else if let ctx = try? resolveUSBContext(
+                deviceQuery: deviceQuery, leaseID: leaseID, command: "track",
+                deviceCandidates: deviceCandidates, runtimeHooks: runtimeHooks) {
+                targetID = ctx.deviceID
+            } else {
+                throw DeviceError("No iPhone selected or available.")
+            }
+            let coordinator: DualTrackInputCoordinator
+            if let dev = try? DeviceRegistry.shared.find(targetID) {
+                coordinator = DeviceRegistry.shared.coordinator(for: dev)
+            } else {
+                coordinator = DualTrackInputCoordinator(
+                    udid: targetID,
+                    mode: .auto,
+                    standardInputResolver: { throw DeviceError("Device disconnected") }
+                )
+            }
+            return .json([
+                "ok": true,
+                "device": targetID,
+                "track": coordinator.status.json,
+            ])
+
+        case ("POST", "/track"), ("POST", "/track/switch"):
+            let targetID: String
+            if let dev = try? DeviceRegistry.shared.find(deviceQuery) {
+                targetID = dev.id
+            } else if let ctx = try? resolveUSBContext(
+                deviceQuery: deviceQuery, leaseID: leaseID, command: "track",
+                deviceCandidates: deviceCandidates, runtimeHooks: runtimeHooks) {
+                targetID = ctx.deviceID
+            } else {
+                throw DeviceError("No iPhone selected or available.")
+            }
+            let rawMode = (params["mode"] as? String) ?? (params["track"] as? String)
+            guard let targetMode = ControlTrackMode.parse(rawMode) else {
+                throw DeviceError("Invalid track mode. Expected 'standard', 'enhanced', or 'auto'.")
+            }
+            let coordinator: DualTrackInputCoordinator
+            if let dev = try? DeviceRegistry.shared.find(targetID) {
+                coordinator = DeviceRegistry.shared.coordinator(for: dev)
+            } else {
+                coordinator = DualTrackInputCoordinator(
+                    udid: targetID,
+                    mode: targetMode,
+                    standardInputResolver: { throw DeviceError("Device disconnected") }
+                )
+            }
+            coordinator.switchMode(targetMode)
+            return .json([
+                "ok": true,
+                "device": targetID,
+                "track": coordinator.status.json,
+            ])
+
+        case ("GET", "/tree"), ("GET", "/ax_tree"), ("POST", "/ax_tree"):
+            let targetID: String
+            if let dev = try? DeviceRegistry.shared.find(deviceQuery) {
+                targetID = dev.id
+            } else if let ctx = try? resolveUSBContext(
+                deviceQuery: deviceQuery, leaseID: leaseID, command: "ax_tree",
+                deviceCandidates: deviceCandidates, runtimeHooks: runtimeHooks) {
+                targetID = ctx.deviceID
+            } else {
+                throw DeviceError("No iPhone selected or available.")
+            }
+            let coordinator: DualTrackInputCoordinator
+            if let dev = try? DeviceRegistry.shared.find(targetID) {
+                coordinator = DeviceRegistry.shared.coordinator(for: dev)
+            } else {
+                coordinator = DualTrackInputCoordinator(
+                    udid: targetID,
+                    mode: .auto,
+                    standardInputResolver: { throw DeviceError("Device disconnected") }
+                )
+            }
+            let includeOffscreen = PostActionOptions.parseBoolFlag(params["include_offscreen"]) ?? false
+            let tree = try coordinator.getAXTree(includeOffscreen: includeOffscreen)
+            return .json([
+                "ok": true,
+                "device": targetID,
+                "tree": tree,
+            ])
+
         case ("POST", "/task"), ("POST", "/v1/tasks"):
             let taskOptions = try GeminiTaskExecutor.RequestOptions.parse(body: body, query: query)
             let effectiveHooks: GhosthandRuntimeHooks
@@ -1630,7 +1720,17 @@ enum ControlAPI {
             sleepFn = { Thread.sleep(forTimeInterval: $0) }
         }
 
-        if action.requiresPointer, !input.isPointerReady {
+        let coordinator: DualTrackInputCoordinator?
+        if runtimeHooks == nil, let dev = try? DeviceRegistry.shared.find(deviceQuery ?? targetID) {
+            coordinator = DeviceRegistry.shared.coordinator(for: dev)
+        } else {
+            coordinator = nil
+        }
+
+        let isEnhancedActive = coordinator?.mode == .enhanced
+            || (coordinator?.mode == .auto && coordinator?.enhancedDriver.isAvailable == true && coordinator?.state != .degradedToStandard)
+
+        if action.requiresPointer, !isEnhancedActive, !input.isPointerReady {
             // Keep readiness ahead of parameter parsing. API callers may have no window
             // polling readiness, and a lost subscription or screen change invalidates origin.
             input.invalidatePointerEstimate()
@@ -1638,6 +1738,9 @@ enum ControlAPI {
         }
 
         var responsePayload: [String: Any] = ["ok": true, "device": targetID]
+        if let coordinator {
+            responsePayload["track"] = coordinator.status.json
+        }
 
         switch action {
         case .tap:
@@ -1645,7 +1748,12 @@ enum ControlAPI {
                 body, deviceID: targetID, deviceQuery: deviceQuery,
                 screenSize: targetScreenSize, screenName: targetScreenName,
                 ocrCapture: ocrCapture, runtimeHooks: runtimeHooks)
-            try input.tap(x: resolved.x, y: resolved.y, hold: (body["hold"] as? Double) ?? 0.08)
+            let hold = (body["hold"] as? Double) ?? 0.08
+            if let coordinator, let screenSize = targetScreenSize {
+                try coordinator.tap(x: resolved.x, y: resolved.y, screenWidth: screenSize.width, screenHeight: screenSize.height, hold: hold)
+            } else {
+                try input.tap(x: resolved.x, y: resolved.y, hold: hold)
+            }
             if let matched = resolved.matchedItem {
                 responsePayload["text"] = matched.text
                 responsePayload["x"] = resolved.targetPixel?.x ?? matched.x
@@ -1658,7 +1766,11 @@ enum ControlAPI {
                 ocrCapture: ocrCapture, runtimeHooks: runtimeHooks)
             let hold = (body["hold"] as? Double) ?? 0.22
             let gap = (body["gap"] as? Double) ?? 0.12
-            try input.doubleTap(x: resolved.x, y: resolved.y, hold: hold, gap: gap)
+            if let coordinator, let screenSize = targetScreenSize {
+                try coordinator.doubleTap(x: resolved.x, y: resolved.y, screenWidth: screenSize.width, screenHeight: screenSize.height, hold: hold, gap: gap)
+            } else {
+                try input.doubleTap(x: resolved.x, y: resolved.y, hold: hold, gap: gap)
+            }
             if let matched = resolved.matchedItem {
                 responsePayload["text"] = matched.text
                 responsePayload["x"] = resolved.targetPixel?.x ?? matched.x
@@ -1671,7 +1783,11 @@ enum ControlAPI {
                 ocrCapture: ocrCapture, runtimeHooks: runtimeHooks)
             let hold = (body["hold"] as? Double) ?? 0.22
             let gap = (body["gap"] as? Double) ?? 0.12
-            try input.tripleTap(x: resolved.x, y: resolved.y, hold: hold, gap: gap)
+            if let coordinator, let screenSize = targetScreenSize {
+                try coordinator.tripleTap(x: resolved.x, y: resolved.y, screenWidth: screenSize.width, screenHeight: screenSize.height, hold: hold, gap: gap)
+            } else {
+                try input.tripleTap(x: resolved.x, y: resolved.y, hold: hold, gap: gap)
+            }
             if let matched = resolved.matchedItem {
                 responsePayload["text"] = matched.text
                 responsePayload["x"] = resolved.targetPixel?.x ?? matched.x
@@ -1683,7 +1799,11 @@ enum ControlAPI {
                 body, deviceID: targetID, deviceQuery: deviceQuery,
                 screenSize: targetScreenSize, screenName: targetScreenName,
                 ocrCapture: ocrCapture, runtimeHooks: runtimeHooks)
-            try input.hold(x: resolved.x, y: resolved.y, duration: durationSeconds)
+            if let coordinator, let screenSize = targetScreenSize {
+                try coordinator.hold(x: resolved.x, y: resolved.y, screenWidth: screenSize.width, screenHeight: screenSize.height, duration: durationSeconds)
+            } else {
+                try input.hold(x: resolved.x, y: resolved.y, duration: durationSeconds)
+            }
             if let matched = resolved.matchedItem {
                 responsePayload["text"] = matched.text
                 responsePayload["x"] = resolved.targetPixel?.x ?? matched.x
@@ -1691,7 +1811,13 @@ enum ControlAPI {
             }
         case .swipe:
             let swipe = try SwipeRequest(body, screenSize: targetScreenSize, screenName: targetScreenName)
-            try input.swipe(points: swipe.points, duration: swipe.duration)
+            if let coordinator, let screenSize = targetScreenSize, swipe.points.count >= 2 {
+                let p1 = swipe.points[0]
+                let p2 = swipe.points[1]
+                try coordinator.swipe(fromX: p1.0, fromY: p1.1, toX: p2.0, toY: p2.1, screenWidth: screenSize.width, screenHeight: screenSize.height, duration: swipe.duration)
+            } else {
+                try input.swipe(points: swipe.points, duration: swipe.duration)
+            }
         case .holdDrag:
             let holdDrag = try parseHoldDragRequest(
                 body, screenSize: targetScreenSize, screenName: targetScreenName)

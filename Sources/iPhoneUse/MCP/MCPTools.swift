@@ -412,6 +412,31 @@ enum MCPToolCatalog {
                     "approve": ["type": "boolean", "default": true],
                     "device": device,
                 ]),
+            tool(
+                "switch_track_mode",
+                table.toolSwitchTrackMode,
+                [
+                    "mode": [
+                        "type": "string",
+                        "enum": ["standard", "enhanced", "auto"],
+                        "default": "auto",
+                        "description": "Control track mode: 'standard' (retail BLE HID), 'enhanced' (direct touch/AX tree via developer service), or 'auto' (prefer enhanced, fallback to standard)."
+                    ],
+                    "device": device,
+                ], required: ["mode"]),
+            tool(
+                "get_track_status",
+                table.toolGetTrackStatus,
+                [
+                    "device": device,
+                ], readOnly: true),
+            tool(
+                "get_ax_tree",
+                table.toolGetAXTree,
+                [
+                    "include_offscreen": ["type": "boolean", "default": false],
+                    "device": device,
+                ], readOnly: true),
         ]
     }
 
@@ -798,6 +823,15 @@ struct MCPToolRequest {
             if let prompt = parsed.prompt { body["prompt"] = prompt }
             if let resume = parsed.resumeTaskID { body["resume"] = resume }
             return MCPToolRequest(path: "/task", body: withDevice(body, device))
+        case "switch_track_mode":
+            let mode = (arguments["mode"] as? String) ?? "auto"
+            return MCPToolRequest(path: "/track/switch", body: withDevice(["mode": mode], device))
+        case "get_track_status", "track_status":
+            return MCPToolRequest(path: "/track", body: withDevice([:], device))
+        case "get_ax_tree", "ax_tree":
+            var body: [String: Any] = [:]
+            if let inc = arguments["include_offscreen"] { body["include_offscreen"] = inc }
+            return MCPToolRequest(path: "/ax_tree", body: withDevice(body, device))
         default:
             return nil
         }

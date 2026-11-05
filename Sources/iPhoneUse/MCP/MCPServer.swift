@@ -195,6 +195,7 @@ enum MCPServer {
                         "screenshot", "ocr_screen", "screentext",
                         "photo_list", "photo_pull", "file_list", "file_pull",
                         "app_list", "device_info", "device_logs",
+                        "get_track_status", "get_ax_tree",
                     ]
                     let isReadOnlyTool =
                         readOnlyNames.contains(name)
@@ -214,6 +215,7 @@ enum MCPServer {
                         "file_list", "file_pull", "file_push", "file_remove",
                         "app_list", "open_app", "device_info", "device_logs",
                         "assistivetouch", "assistive_touch", "task",
+                        "switch_track_mode", "get_track_status", "get_ax_tree",
                     ]
                     let isStructuredScroll =
                         name == "scroll"
