@@ -27,6 +27,7 @@ struct StringsAPI: LocalizedTable {
 
     // DeviceRegistry device matching
     let noPhoneMatches: (String, String) -> String
+    let multiplePhoneMatches: (String, Int, String) -> String
     let noScreen: String
     let multiplePhones: (Int, String) -> String
     let noBluetoothConnection: (String, String) -> String
@@ -66,6 +67,7 @@ struct StringsAPI: LocalizedTable {
         coordinatesRequired: { "缺少 \($0) 与 \($1)" },
         noFrameFromScreen: { "尚未收到来自 \($0) 的画面" },
         noPhoneMatches: { "没有匹配 \"\($0)\" 的手机。\($1)" },
+        multiplePhoneMatches: { "匹配 \"\($0)\" 的手机有 \($1) 台，请传入完整 device ID。\($2)" },
         noScreen: "未发现 iPhone 画面：请用 USB 连接 iPhone 并解锁",
         multiplePhones: { "已连接 \($0) 台手机，请传入 device。\($1)" },
         noBluetoothConnection: { name, peripheral in
@@ -103,6 +105,7 @@ struct StringsAPI: LocalizedTable {
         coordinatesRequired: { "\($0) and \($1) are required" },
         noFrameFromScreen: { "no frame yet from \($0)" },
         noPhoneMatches: { "no phone matches \"\($0)\". \($1)" },
+        multiplePhoneMatches: { "\($1) phones match \"\($0)\", pass a fuller device ID. \($2)" },
         noScreen: "no iPhone screen: plug the iPhone in over USB and unlock it",
         multiplePhones: { "\($0) phones are connected, pass device. \($1)" },
         noBluetoothConnection: { name, peripheral in

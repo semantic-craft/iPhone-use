@@ -34,6 +34,43 @@ struct StringsMCP: LocalizedTable {
     let toolPressKey: String
     let toolKeyboardSequence: String
     let toolHome: String
+    let toolSetupStatus: String
+    let toolAcquire: String
+    let toolWait: String
+    let toolRelease: String
+    let leaseParam: String
+    let reasonParam: String
+    let labelParam: String
+    let idleTimeoutParam: String
+    let forceParam: String
+    let waitSecondsParam: String
+    let toolScreentext: String
+    let toolDoubleTap: String
+    let toolTripleTap: String
+    let toolHold: String
+    let toolHoldDrag: String
+    let toolScroll: String
+    let toolWake: String
+    let toolLock: String
+    let toolUnlock: String
+    let toolMute: String
+    let toolUnmute: String
+    let toolRecordStart: String
+    let toolRecordStop: String
+    let toolPhotoList: String
+    let toolPhotoPull: String
+    let toolPhotoDelete: String
+    let toolPhotoPush: String
+    let toolFileList: String
+    let toolFilePull: String
+    let toolFilePush: String
+    let toolFileRemove: String
+    let toolAppList: String
+    let toolOpenApp: String
+    let toolDeviceInfo: String
+    let toolDeviceLogs: String
+    let toolAssistiveTouch: String
+    let toolTask: String
 
     // MCPToolRequest / MCPKeyboardSequence validation
     let unknownTool: (String) -> String
@@ -100,6 +137,43 @@ struct StringsMCP: LocalizedTable {
         toolKeyboardSequence:
             "在当前应用中执行一段简短、已知的键盘序列，最后返回一张截图。所有步骤在输入前完成校验；同一手机的 MCP 锁覆盖整个序列。出错即停止且不会重放。需要查看中间画面时请拆分为多次调用。支持 steps/actions 别名、可选 type 字段及 0...5 秒的 delay/wait 步骤。文字步骤支持 clear_before、commit_ime、press_enter、ensure_chinese_ime。最多 16 步、文字总量 256 字符；中文转拼音并选择首个候选词。",
         toolHome: "回到主屏幕。",
+        toolSetupStatus: "检查 Mac 摄像头权限、蓝牙状态、iPhone USB 信任与解锁就绪状态，返回当前所处步骤与租约状态。",
+        toolAcquire: "获取指定 iPhone（支持名称如 Hermes、default 或 ID）的独占租约，默认空闲超时 600 秒（10 分钟）。",
+        toolWait: "等待正在占用目标 iPhone 的租约释放或过期后自动获取新租约。",
+        toolRelease: "主动释放已持有的 iPhone 租约 ID。",
+        leaseParam: "可选的租约 ID（由 acquire 或 wait 返回）。提供时将自动刷新租约空闲计时并校验归属；未提供时在设备未被其他租约占用时直接执行。",
+        reasonParam: "申请租约的任务说明（例如“回复消息”），便于其他会话了解占用原因。",
+        labelParam: "可选的调用方标签（例如会话名或 Agent ID）。",
+        idleTimeoutParam: "租约空闲超时秒数（默认 600 秒，范围 1...86400）。",
+        forceParam: "设为 true 时强制接管已有租约（默认 false）。",
+        waitSecondsParam: "最长等待秒数（默认 600 秒，范围 1...3600）。",
+        toolScreentext: "识别屏幕文字，以与截图同坐标系的 `x,y wxh text` 行格式及结构化行列表返回。",
+        toolDoubleTap: "双击屏幕坐标或匹配的 OCR 文本，支持动作后静止感知、同调用返回截图与 screentext 及 wait_text。",
+        toolTripleTap: "三击屏幕坐标或匹配的 OCR 文本，支持动作后静止感知、同调用返回截图与 screentext 及 wait_text。",
+        toolHold: "长按屏幕坐标或匹配的 OCR 文本（100...10000 毫秒，默认 1000 毫秒），支持动作后静止感知。",
+        toolHoldDrag: "在起点按下并静止长按 holdMs（默认 1000 毫秒）后拖动至终点（durationMs 默认 1000 毫秒）再释放。",
+        toolScroll: "在指定位置（默认屏幕中心）沿 up、down、left、right 方向发送滚轮 ticks（1...1000，默认 5）。",
+        toolWake: "点击顶部状态栏中心唤醒屏幕并等待 USB 帧；若设备处于锁定状态则返回 device-locked。",
+        toolLock: "通过蓝牙键盘发送 Control-Command-Q 锁定 iPhone，并通过 USB 验证锁屏状态。",
+        toolUnlock: "通过蓝牙键盘唤醒并输入一次密码解锁 iPhone；密码错误绝不自动重试（unlock-failed），且绝不记录密码。",
+        toolMute: "通过蓝牙发送静音键（0x00E2）并通过 USB SpringBoard 日志验证静音状态；未确认时返回 mute-unconfirmed 且绝不重复按键。",
+        toolUnmute: "通过蓝牙发送静音键（0x00E2）取消静音并通过 USB SpringBoard 日志验证状态；未确认时返回 mute-unconfirmed。",
+        toolRecordStart: "开始录制 iPhone 屏幕视频（MP4），支持 maxDurationSeconds（1...3600，默认 300）、fps 与 audio。",
+        toolRecordStop: "停止当前 iPhone 屏幕录制并返回文件路径、时长、字节数、分辨率、帧数与停止原因。",
+        toolPhotoList: "通过 USB 列出 iPhone 相册（/DCIM）中的最近照片与视频。",
+        toolPhotoPull: "通过 USB 读取或导出 iPhone 相册（/DCIM）中的指定照片或视频。",
+        toolPhotoDelete: "通过 USB PhotoLibrary 服务删除 iPhone 相册中的指定照片或视频。",
+        toolPhotoPush: "将 Mac 本地图片或视频通过 USB 导入 iPhone 相册（Camera Roll），供 TikTok 等应用直接选用。",
+        toolFileList: "通过 USB AFC 或应用容器列出 iPhone 上的目录条目。",
+        toolFilePull: "通过 USB AFC 或应用容器拉取 iPhone 上的文件内容。",
+        toolFilePush: "通过 USB AFC 或应用容器向 iPhone 上传写入文件。",
+        toolFileRemove: "通过 USB AFC 或应用容器删除 iPhone 上的文件或目录（禁止通过 AFC 直接删除 /DCIM 相册媒体）。",
+        toolAppList: "通过 USB 列出 iPhone 上已安装的用户应用与常用系统应用。",
+        toolOpenApp: "通过 USB 按应用名称或 Bundle ID 打开 iPhone 应用，支持动作后静止感知、wait_text、screentext 与截图。",
+        toolDeviceInfo: "通过 USB 查询 iPhone 设备型号、系统版本、序列号、语言区域与电池信息。",
+        toolDeviceLogs: "通过 USB 采集 iPhone syslog 日志，支持按秒数、行数与关键字过滤。",
+        toolAssistiveTouch: "通过 USB 查询或设置 iPhone AssistiveTouch（辅助触控）开关状态。",
+        toolTask: "基于 Gemini 3.8 Flash Interactions API（mobile computer_use，0..999 归一化坐标，previous_interaction_id 续接，thinking_level 调节与 yield_to_user 敏感动作守卫）执行或续接自然语言多步任务。",
         unknownTool: { "未知工具 \($0)" },
         coordinateFinite: { "\($0) 必须是有限且非负的截图坐标" },
         hidCountRange: { "\($0) 必须是 -32...32 内的整数 HID 计数" },
@@ -167,6 +241,74 @@ struct StringsMCP: LocalizedTable {
         toolKeyboardSequence:
             "Run a short, known keyboard sequence in the current app with one final screenshot. All steps are validated before input; the same-phone MCP lock covers the whole sequence. Stops on error without replay. Use separate calls when an intermediate screen needs inspection. Accepts steps/actions aliases, optional type tags and delay/wait steps of 0...5 seconds. Text steps accept clear_before, commit_ime, press_enter and ensure_chinese_ime. Up to 16 steps and 256 total characters; Hanzi becomes pinyin and selects the first candidate.",
         toolHome: "Go to the Home Screen.",
+        toolSetupStatus:
+            "Check macOS camera permission, Bluetooth state, and iPhone USB trust/unlock readiness, returning the current setup step and lease status.",
+        toolAcquire:
+            "Acquire an exclusive lease on a target iPhone (by display name such as Hermes, default, or ID) with a 600-second (10-minute) default idle timeout.",
+        toolWait:
+            "Wait until the active lease on the target iPhone is released or expires, then automatically acquire a new lease.",
+        toolRelease: "Release an active iPhone lease by its lease ID.",
+        leaseParam:
+            "Optional lease ID (from acquire or wait). Refreshes the lease idle timer and verifies ownership when provided; omitted calls still work when the phone is not leased by another session.",
+        reasonParam: "Task description for acquiring the lease (e.g. \"reply to messages\").",
+        labelParam: "Optional caller label (e.g. session name or agent ID).",
+        idleTimeoutParam: "Lease idle timeout in seconds (default 600, range 1...86400).",
+        forceParam: "When true, forcefully take over an existing active lease (default false).",
+        waitSecondsParam: "Maximum time to wait in seconds (default 600, range 1...3600).",
+        toolScreentext:
+            "Recognize screen text in the same coordinate space as screenshot/tap, returning `x,y wxh text` lines and structured line items.",
+        toolDoubleTap:
+            "Double-tap a point or matched OCR text, supporting post-action stillness detection, same-call screenshot/screentext, and wait_text.",
+        toolTripleTap:
+            "Triple-tap a point or matched OCR text, supporting post-action stillness detection, same-call screenshot/screentext, and wait_text.",
+        toolHold:
+            "Press and hold a point or matched OCR text for 100...10000 ms (default 1000 ms), supporting post-action stillness detection.",
+        toolHoldDrag:
+            "Press at from, hold completely still for holdMs (default 1000 ms), drag to to over durationMs (default 1000 ms), and release.",
+        toolScroll:
+            "Send mouse wheel ticks (1...1000, default 5) in direction (up, down, left, right) at an optional point (default screen center).",
+        toolWake:
+            "Wake the screen by clicking the top-center status bar and waiting for a USB frame; fails with device-locked if locked.",
+        toolLock:
+            "Lock the iPhone by sending Control-Command-Q over the Bluetooth keyboard and verifying lock state over USB.",
+        toolUnlock:
+            "Wake and unlock the iPhone with its passcode over the Bluetooth keyboard; a wrong passcode is NEVER retried (unlock-failed) and never logged.",
+        toolMute:
+            "Mute the iPhone ringer via Bluetooth consumer Mute (0x00E2) and confirm state over USB; fails with mute-unconfirmed without retrying if unconfirmed.",
+        toolUnmute:
+            "Unmute the iPhone ringer via Bluetooth consumer Mute (0x00E2) and confirm state over USB; fails with mute-unconfirmed without retrying if unconfirmed.",
+        toolRecordStart:
+            "Start recording the iPhone screen to an MP4 file with maxDurationSeconds (1...3600, default 300), fps, and audio.",
+        toolRecordStop:
+            "Stop the active iPhone screen recording and return the file path, durationSeconds, bytes, dimensions, frames, and stoppedBy reason.",
+        toolPhotoList:
+            "List recent photos and videos in the iPhone Camera Roll (/DCIM) over USB.",
+        toolPhotoPull:
+            "Pull or export a photo or video from the iPhone Camera Roll (/DCIM) over USB.",
+        toolPhotoDelete:
+            "Delete a photo or video from the iPhone Camera Roll via the USB PhotoLibrary service.",
+        toolPhotoPush:
+            "Import a local Mac image or video into the iPhone Camera Roll over USB so apps like TikTok can select it.",
+        toolFileList:
+            "List files and directories over USB AFC or inside an app container.",
+        toolFilePull:
+            "Read or export a file over USB AFC or from an app container.",
+        toolFilePush:
+            "Upload or write a file over USB AFC or into an app container.",
+        toolFileRemove:
+            "Remove a file or directory over USB AFC or inside an app container (refuses raw /DCIM deletion; use photo_delete for Camera Roll media).",
+        toolAppList:
+            "List installed user apps and common system apps on the iPhone over USB.",
+        toolOpenApp:
+            "Open an iPhone app by display name or bundle ID over USB, supporting post-action stillness detection, wait_text, screentext, and screenshot.",
+        toolDeviceInfo:
+            "Query iPhone model, iOS version, serial/UDID, locale, and battery level over USB.",
+        toolDeviceLogs:
+            "Capture recent iPhone syslog lines over USB with optional seconds, max lines, and substring filter.",
+        toolAssistiveTouch:
+            "Get or set the iPhone AssistiveTouch accessibility state over USB.",
+        toolTask:
+            "Run or resume an autonomous multi-step natural-language task using Gemini 3.8 Flash Interactions API (mobile computer_use, 0..999 normalized coordinates, previous_interaction_id continuation, thinking_level, and yield_to_user confirmation guard).",
         unknownTool: { "unknown tool \($0)" },
         coordinateFinite: { "\($0) must be a finite, nonnegative screenshot coordinate" },
         hidCountRange: { "\($0) must be an integer HID count in -32...32" },

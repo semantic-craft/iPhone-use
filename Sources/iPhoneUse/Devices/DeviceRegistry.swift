@@ -18,6 +18,14 @@ struct Device {
             info["width"] = Int(size.width)
             info["height"] = Int(size.height)
         }
+        if let store = try? LeaseStore.current() {
+            if let lease = try? store.activeLease(forDeviceID: id) {
+                info["lease"] = lease.infoJSON()
+            }
+            if let waiters = try? store.waiters(forDeviceID: id), !waiters.isEmpty {
+                info["waiting"] = waiters.map { $0.json() }
+            }
+        }
         return info
     }
 }
@@ -237,26 +245,25 @@ final class DeviceRegistry {
         return HIDPeripheral.shared.connectedHosts.filter { !matched.contains($0) }
     }
 
-    /// A phone by id, name or id prefix. Without a query there must be exactly one phone.
+    /// A phone by id, name, `"default"`, or id prefix. Without a query there must be exactly one phone.
     func find(_ query: String?) throws -> Device {
         let devices = all()
-        if let query, !query.isEmpty {
-            let q = query.lowercased()
-            let hit =
-                devices.first { $0.id.lowercased() == q } ?? devices.first { $0.screen.name.lowercased() == q }
-                ?? devices.first { $0.id.lowercased().hasPrefix(q) }
-            guard let hit else {
-                throw DeviceError(StringsAPI.current.noPhoneMatches(query, Self.describe(devices)))
+        let candidates = devices.map { DeviceCandidate(id: $0.id, name: $0.screen.name) }
+        switch DeviceAddressing.resolve(query, from: candidates) {
+        case .success(let matched):
+            guard let hit = devices.first(where: { $0.id == matched.id }) else {
+                throw DeviceError(StringsAPI.current.noPhoneMatches(query ?? "", Self.describe(devices)))
             }
             return hit
-        }
-        guard !devices.isEmpty else {
+        case .failure(.noDevicesConnected):
             throw DeviceError(StringsAPI.current.noScreen)
+        case .failure(.multipleDevicesConnected(let count)):
+            throw DeviceError(StringsAPI.current.multiplePhones(count, Self.describe(devices)))
+        case .failure(.noMatch(let q)):
+            throw DeviceError(StringsAPI.current.noPhoneMatches(q, Self.describe(devices)))
+        case .failure(.ambiguousMatch(let q, let count)):
+            throw DeviceError(StringsAPI.current.multiplePhoneMatches(q, count, Self.describe(devices)))
         }
-        guard devices.count == 1 else {
-            throw DeviceError(StringsAPI.current.multiplePhones(devices.count, Self.describe(devices)))
-        }
-        return devices[0]
     }
 
     /// Resolve only an already verified connection. A normal input request must

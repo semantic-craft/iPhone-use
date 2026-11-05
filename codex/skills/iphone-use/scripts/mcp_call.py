@@ -13,9 +13,25 @@ import tempfile
 import time
 
 
-TOOLS = ("list_devices", "screenshot", "move_pointer", "adjust_pointer", "click_pointer",
-         "tap", "long_press", "swipe", "type_text", "press_key", "keyboard_sequence", "home")
-READ_ONLY = {"list_devices", "screenshot"}
+TOOLS = (
+    "list_devices", "screenshot", "ocr_screen", "screentext", "tap_text",
+    "move_pointer", "adjust_pointer", "click_pointer",
+    "tap", "double_tap", "triple_tap", "hold", "long_press",
+    "swipe", "hold_drag", "scroll",
+    "type_text", "press_key", "keyboard_sequence", "home",
+    "wake", "lock", "unlock", "mute", "unmute",
+    "record_start", "record_stop", "act",
+    "setup_status", "acquire", "wait", "release",
+    "photo_list", "photo_pull", "photo_delete", "photo_push",
+    "file_list", "file_pull", "file_push", "file_remove",
+    "app_list", "open_app", "device_info", "device_logs", "assistivetouch",
+    "task",
+)
+READ_ONLY = {
+    "list_devices", "screenshot", "ocr_screen", "screentext", "setup_status",
+    "photo_list", "photo_pull", "file_list", "file_pull",
+    "app_list", "device_info", "device_logs",
+}
 
 
 class TransportError(Exception):
@@ -192,7 +208,10 @@ def main():
     except ValueError as error:
         print(json.dumps({"ok": False, "error": str(error), "may_have_executed": False}))
         return 1
-    launcher = Path(__file__).resolve().parents[4] / "scripts/mcp.sh"
+    launcher = Path(
+        os.environ.get("IPHONE_USE_LAUNCHER")
+        or str(Path(__file__).resolve().parents[4] / "scripts/mcp.sh")
+    )
     result = call([str(launcher)], args.tool, arguments, args.output_dir)
     print(json.dumps(result, ensure_ascii=False))
     return 0 if result["ok"] else 1

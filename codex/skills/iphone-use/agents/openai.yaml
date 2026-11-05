@@ -1,9 +1,9 @@
 interface:
   display_name: "iPhone Use"
-  short_description: "通过 iphone-use MCP 截图、操作真机并执行 iPhone 自动化任务"
-  default_prompt: "使用 $iphone-use 操作已连接的 iPhone，并根据我的任务检查结果。"
+  short_description: "通过 iphone-use MCP 服务在真机（如 Hermes）上执行租约控制、静止截图/OCR、USB 相册/文件/应用通道与 Gemini 3.8 Flash 多步任务"
+  default_prompt: "使用 $iphone-use 检查真机就绪状态（setup_status），获取租约后按任务操控 iPhone 并回报截图与文字结果。"
 dependencies:
   tools:
     - type: "mcp"
       value: "iphone-use"
-      description: "操作真实 iPhone 的本地 MCP 服务"
+      description: "操作真实 iPhone 的本地 MCP 服务（46 tools，含租约、USB 通道与自主多步 task）"

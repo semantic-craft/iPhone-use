@@ -133,10 +133,13 @@ private final class NativeUSBDeviceServices {
     private typealias DeviceCall = @convention(c) (UnsafeRawPointer) -> Int32
     private typealias CreateDevices = @convention(c) () -> Unmanaged<CFArray>?
     private typealias CopyIdentifier = @convention(c) (UnsafeRawPointer) -> Unmanaged<CFString>?
-    private typealias StartService = @convention(c)
-    (UnsafeRawPointer, CFString, CFDictionary?, UnsafeMutablePointer<UnsafeRawPointer?>) -> Int32
-    private typealias Receive = @convention(c)
-    (UnsafeRawPointer, UnsafeMutablePointer<Unmanaged<CFPropertyList>?>, UnsafeMutablePointer<CFPropertyListFormat>?) ->
+    private typealias StartService =
+        @convention(c) (UnsafeRawPointer, CFString, CFDictionary?, UnsafeMutablePointer<UnsafeRawPointer?>) -> Int32
+    private typealias Receive =
+        @convention(c) (
+            UnsafeRawPointer, UnsafeMutablePointer<Unmanaged<CFPropertyList>?>,
+            UnsafeMutablePointer<CFPropertyListFormat>?
+        ) ->
         Int32
     private typealias Send = @convention(c) (UnsafeRawPointer, CFPropertyList, CFPropertyListFormat) -> Int32
     private typealias Invalidate = @convention(c) (UnsafeRawPointer) -> Void

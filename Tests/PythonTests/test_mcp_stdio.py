@@ -53,8 +53,29 @@ class MockApp(BaseHTTPRequestHandler):
         if self.server.before_post:
             self.server.before_post(body)
         if self.path == "/ocr":
-            self.send(200, json.dumps({"device": body["device"], "width": 600, "height": 1200,
+            self.send(200, json.dumps({"device": body.get("device", "phone-1"), "width": 600, "height": 1200,
                                        "items": [{"text": "设置", "x": 120, "y": 400}]}).encode())
+            return
+        if self.path in ("/scroll_until", "/scroll") and body.get("until_text"):
+            self.send(200, json.dumps({
+                "ok": True,
+                "device": body.get("device", "phone-1"),
+                "found": True,
+                "stop": "found",
+                "stopReason": "found",
+                "scrolls": 2,
+                "match": {"text": body["until_text"], "x": 200, "y": 500},
+            }).encode())
+            return
+        if self.path in ("/scroll_collect", "/scroll") and body.get("collect"):
+            self.send(200, json.dumps({
+                "ok": True,
+                "device": body.get("device", "phone-1"),
+                "stop": "reached-end",
+                "stopReason": "reached-end",
+                "scrolls": 3,
+                "texts": ["General", "Privacy"],
+            }).encode())
             return
         if self.path == "/act" and self.server.act_failure is not None:
             self.send(400, json.dumps(self.server.act_failure).encode())
@@ -215,7 +236,7 @@ class MCPStdioTests(unittest.TestCase):
                 capture_output=True, text=True, timeout=15,
             )
         self.assertEqual(process.returncode, 0, process.stderr)
-        self.assertIn("15 tools", process.stdout)
+        self.assertIn("46 tools", process.stdout)
         # The checker's initialize fetches /config; tools/list reuses the value.
         self.assertEqual(self.server.events, [("GET", "/config")])
 
@@ -580,12 +601,39 @@ class MCPStdioTests(unittest.TestCase):
         self.assertIn("控制真实 iPhone", replies[0]["result"]["instructions"])
         tools = replies[1]["result"]["tools"]
         # Tool and parameter names are the client contract and stay English.
-        self.assertEqual(len(tools), 15)
+        self.assertEqual(len(tools), 46)
         home = next(tool for tool in tools if tool["name"] == "home")
         self.assertEqual(home["description"], "回到主屏幕。")
         error = replies[2]["result"]["content"][0]["text"]
         self.assertIn("截图坐标", error)
         self.assertEqual(self.server.events, [("GET", "/config")])
+
+    def test_phone_exec_seeds_agent_helpers_and_traces_primitives(self):
+        phone_exec = ROOT / "codex" / "skills" / "iphone-use" / "scripts" / "phone_exec.py"
+        with tempfile.TemporaryDirectory() as ws:
+            env = dict(self.env, IPHONE_USE_AGENT_WORKSPACE=ws, IPHONE_USE_DEVICE="phone-1")
+            code = (
+                "st = screen(min_confidence=0.6, content_only=True)\n"
+                "assert st.has('设置')\n"
+                "tap_icon('设置')\n"
+                "match = scroll_until('Privacy', max_scrolls=4)\n"
+                "items = scroll_collect(max_scrolls=4)\n"
+                "print(json.dumps({'match': match['text'], 'items': items}))\n"
+            )
+            proc = subprocess.run(
+                ["python3", "-B", str(phone_exec)],
+                input="import json\n" + code,
+                env=env,
+                cwd="/",
+                capture_output=True,
+                text=True,
+                timeout=15,
+            )
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            self.assertTrue((Path(ws) / "agent_helpers.py").is_file())
+            self.assertIn("[trace] tap_icon('设置') -> ok", proc.stderr)
+            payload = json.loads(proc.stdout.strip())
+            self.assertEqual(payload, {"match": "Privacy", "items": ["General", "Privacy"]})
 
 
 if __name__ == "__main__":

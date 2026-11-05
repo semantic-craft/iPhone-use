@@ -13,4 +13,8 @@ if CommandLine.arguments.dropFirst().first == "mcp" {
     MCPServer.run()
 }
 
+if CLIRunner.shouldRunCLI(arguments: CommandLine.arguments) {
+    CLIRunner.runAndExit()
+}
+
 Application.run()

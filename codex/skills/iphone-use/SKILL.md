@@ -1,87 +1,78 @@
 ---
 name: iphone-use
-description: "通过 iphone-use MCP 操作连接到 Mac 的真实 iPhone，执行截图、应用导航、交互检查和重复自动化任务。适用于手机操作任务；修改 iOS 源码或操作模拟器时无需使用。"
+description: "通过本地 iphone-use MCP 服务操作已连接的真实 iPhone（USB 屏幕采集/AFC/安装/日志 + 蓝牙 HID 指针与键盘 + Gemini 3.8 Flash 多步 task）。当用户要求在真机（如 Hermes）上截图、点击、滑动、输入文字、解锁、传输相册/应用文件、启动应用或执行多步移动端任务时使用。不要用于 iOS 模拟器（Simulator 请用 mobilebuildmcp）。"
 ---
 
-# iPhone Use
+# iPhone Use（Ghosthand 融合版真机控制技能）
 
-使用 `iphone-use` MCP 执行用户给出的手机任务。`$iphone-use` 后的文字就是本次任务，不需要特定参数格式。若只调用技能但未给出目标，先查询设备并截图，再询问需要完成什么任务。
+通过本地 `iphone-use` MCP 服务（HTTP 控制面默认 `127.0.0.1:7390`，stdio 入口 `scripts/mcp.sh`）观察并操控通过 USB 与蓝牙连接在 Mac 上的真实 iPhone。同时支持 **Antigravity Desktop (AGY)** 与 **Codex** 双端调用。
 
-## 连接与设备
+## 1. 服务自举与就绪诊断（`--resident-quiet` + `setup_status`）
 
-- 主程序负责 USB 画面、蓝牙输入和本地 HTTP 服务；MCP 是单独的转发进程。MCP 已连接不代表主程序正在运行。
-- 先调用 `list_devices`。工具未加载或出现 `Transport closed` 时，使用下面的独立连接入口；只有主程序不可达、设备列表为空或目标设备消失时，才执行主程序恢复。
-- 选择用户指定的手机；只有一台时直接使用。多台且无法确定目标时再询问。选定后为每次调用传入完整 `device` ID，不自动改用其他手机。
-- 用 `codex mcp get iphone-use --json` 读取该服务的 `transport.env`，将 `CONFIG`、`IPHONE_USE_PORT`（默认 `release`、`7390`）传给技能脚本；配置中有 `IPHONE_USE_STATE_DIR` 时也一并传入。只读这个 MCP 条目。尚未注册时，仓库的 `scripts/install-codex-mcp.sh` 可完成安装；从本技能真实目录向上三级可到达仓库根目录。
+1. **按需静默自举**：调用任意 `iphone-use` MCP 工具时，若本地 `127.0.0.1:7390` 尚未运行，stdio 服务会自动以 `--resident-quiet` 模式拉起后台守护进程并等待就绪。也可显式运行：
+   ```bash
+   python3 <skill_dir>/scripts/ensure_service.py --wait 6
+   ```
+2. **先查就绪状态**：开始任务或遇到连接异常时，优先调用 `setup_status`（如 `setup_status(device: "Hermes")`），按返回的确定性步骤排查：
+   - `trust`：在 iPhone 上点击“信任此电脑”并授予 macOS 相机/屏幕采集权限。
+   - `unlock`：iPhone 处于锁屏状态，需调用 `unlock(passcode)` 或请用户在真机上解锁。
+   - `usbUnreadable`：重插 USB 线或检查采集会话。
+   - `bluetoothUnavailable` / `pair` / `connecting`：确认 Mac 蓝牙开启并在 iPhone 蓝牙设置中连接此 Mac；触控圆点依赖 `设置 > 辅助功能 > 触控 > 辅助触控`（也可通过 USB 通道调用 `assistivetouch(enabled: true)` 开启）。
+   - `ready`：视频帧、蓝牙 HID 与指针均已就绪。
 
-## MCP 连接断开或工具未加载
+## 2. 设备寻址与租约锁（`acquire` / `wait` / `release`）
 
-不用等待重新打开聊天，执行 `python3 <本技能目录>/scripts/mcp_call.py list_devices`，使用技能真实目录的绝对路径。脚本为本次调用启动独立的 MCP 进程并完成握手，绕过当前聊天失效的通道；它不会关闭其他会话的进程，也不会重启主程序。
+1. **按名或前缀寻址**：所有工具均接受 `device: "Hermes"`（不区分大小写）、`"default"`（单机接入时）、完整 `id` 或唯一 `id` 前缀。多台 iPhone 接入时必须显式传入 `device` 或 `lease`。
+2. **写操作前先拿租约**：执行多步操控前调用 `acquire(device: "Hermes", reason: "<任务简述>", label: "<会话名>")` 获取单调递增租约号（默认空闲超时 `600s`），后续动作传入 `lease`，任务结束调用 `release(lease)` 释放。
+   - 若设备被其他会话持有且返回 `device-leased`，可调用 `wait(device: "Hermes", reason: "...", waitSeconds: 60)` 排队等待，切勿盲目 `force: true` 抢占正在执行的任务（除非用户明确要求强制接管）。
+   - 只读工具（`list_devices`、`screenshot`、`ocr_screen`、`screentext`、`setup_status`、`photo_list`、`photo_pull`、`file_list`、`file_pull`、`app_list`、`device_info`、`device_logs`）在不传 `lease` 时可直接读取。
 
-成功后，本任务后续操作均可通过相同入口继续。例如：
+## 3. 画面观察、动作后静止检测与 Ghosthand 操作铁律
 
-```sh
-python3 <本技能目录>/scripts/mcp_call.py screenshot --arguments '{"device":"完整设备ID"}'
-python3 <本技能目录>/scripts/mcp_call.py tap --arguments '{"device":"完整设备ID","x":120,"y":400}'
-```
+1. **同调用返回静止画面与文字**：几乎所有动作工具（`tap`、`tap_text`、`double_tap`、`triple_tap`、`hold`、`swipe`、`hold_drag`、`scroll`、`type_text`、`press_key`、`home`、`wake`、`unlock`、`open_app`、`act`）均内置动作后静止检测循环（Post-Action Stillness Loop），支持直接传入：
+   - `screentext: true`：动作完成并等待画面静止后，同调用返回当前屏幕 OCR 文本。
+   - `screenshot: true`：同调用附带静止后的屏幕截图。
+   - `wait_text: "<目标文本>"` 与 `timeout_ms: 5000`：等待目标文本出现在屏幕上再返回。
+2. **`wait_text` 绝不盲目重试铁律**：当动作携带 `wait_text` 因超时返回 `wait-text-timeout` 时，**点击或输入动作本身已经发生**；严禁无脑重发同一点击，必须先检查返回的 `screentext` 或调用 `screenshot` 确认当前界面状态。
+3. **文字优先于坐标估算（含主屏图标点击与报错可见列表）**：看到目标按钮文字时，优先用 `tap_text(text: "...", screentext: true)` 或 `act` 批量动作，减少坐标试探。所有截图/像素坐标均基于 `maxEdge = 1000` 缩放图。
+   - **主屏/底栏图标点击（`icon: true` 或 `offset_x`/`offset_y`）**：iOS 主屏幕 App 图标或底部 Tab 栏的文字标签位于图标正下方，直接点文字可能无法触发图标。此时传入 `tap_text(text: "微信", icon: true)`（或 CLI `iphone-use tap_icon "微信"`，以及自定义像素偏移 `offset_x`/`offset_y`），服务端会自动向上偏移点击文字正上方的图标中心。
+   - **报错自带当前可见文本列表（`saw: [...]`）**：当 `tap_text` 未找到目标文本时，错误响应会自动附带当前画面识别到的前 30 条文字（`saw: [...]`），无需额外再调一次 `ocr_screen` 即可判断是拼写差异、页面未加载还是需要先滚动。
+   - **列表滚动查找与收集（`scroll` 的 `until_text` / `collect`）**：在设置页或长列表中查找元素时，可直接调用 `scroll(direction: "down", until_text: "隐私与安全性", max_scrolls: 10)` 或收集全列表文本 `scroll(direction: "down", collect: true, max_scrolls: 8)`；内部会自动过滤顶部状态栏时钟/电量（`y < 6%`）与底部 Home 指示条（`y > 92%`）的干扰，在滚到底部连续无新内容时自动停止（`stopReason: "reached-end"`）。
+   - **OCR 置信度与内容区过滤**：`ocr_screen` 与 `screentext` 支持 `min_confidence: 0.5`（过滤低置信度噪点）与 `content_only: true`（仅保留中部内容区文本，剔除状态栏与底部横条），每条 OCR 结果均携带 `"source": "pixels"` 溯源标记。
+4. **锁屏密码 `unlock` 绝不重试铁律**：`unlock(passcode)` 若报错或未能进入主屏，**绝对禁止重试第二次**（连续输错密码会导致真机永久停用锁死），必须立即停止并交由人工处理。
+5. **原生高清截图 `screenshot(native: true)`**：常规观察用默认 USB 采集流 `screenshot`；当用户明确需要保存在相册级清晰度的原生截图时，传 `screenshot(native: true)`（通过 HID `Cmd+Shift+3` 触发并经 USB 读取后自动清理相机胶卷原图，响应带 `X-Note: deleted`）。
+6. **单回合多步 Python 组合脚本（`iphone-use exec` / `phone_exec.py`）**：当任务包含条件分支、循环抓取或需要沉淀可复用的应用级辅助函数时，可使用 `phone_exec.py`（或 CLI `iphone-use exec <<'PY'`）在单次调用内组合 `open_app`、`tap_text`、`tap_icon`、`scroll_until`、`scroll_collect`、`wait_for_text`、`screen` 等原语，并可将常用流程保存在 `~/.iphone-use/agent-workspace/agent_helpers.py` 跨会话自动加载：
+   ```bash
+   python3 <skill_dir>/scripts/phone_exec.py <<'PY'
+   open_app("Settings", wait_text="General")
+   item = scroll_until("Privacy & Security", max_scrolls=8)
+   if item:
+       tap_text("Privacy & Security", screentext=True)
+   PY
+   ```
 
-工具名称和参数与原 MCP 一致。脚本输出 JSON，图片内容转为唯一的绝对文件路径；用图像查看工具打开 `content` 中的 `path`，再判断下一步。`ok: false` 时检查 `error` 或文字内容。`may_have_executed: true` 表示动作可能已执行，先截图核实，不能直接重发。原生工具报错前发出的动作也遵循这一原则。
+## 4. USB 系统通道（相册 / 文件 / 应用 / 日志 / AssistiveTouch）
 
-独立连接验证成功不代表 Codex 缓存的原通道已修复；通过独立连接完成当前任务即可。若握手仍失败，读取报错和该 MCP 配置，检查构建/启动器，不把传输断开直接当作手机未连接。
+无需点亮屏幕即可通过 USB 访问系统元数据，解锁后可读写媒体与容器文件：
+- **相册通道**：`photo_list`、`photo_pull`、`photo_push`（将 Mac 本地图片/视频如 `.mp4` 导入 `/DCIM/100APPLE` 供 TikTok/小红书等直接选用）、`photo_delete`。
+  - **铁律**：严禁使用 `file_remove` 删除 `/DCIM` 下的文件（AFC 直接删文件会导致系统相册残留破损缩略图，服务端会以 `dcim-remove-forbidden` 拒绝）；删除相册媒体必须用 `photo_delete`。
+- **文件通道**：`file_list`、`file_pull`、`file_push`、`file_remove`（支持 `bundle_id` 访问开启 File Sharing 的应用 `Documents` 容器或 `/var/mobile/Media`）。
+- **应用与诊断通道**：`app_list`、`open_app(app: "TikTok", wait_text: "...", screentext: true)`、`device_info`（锁屏可用，读取机型、iOS 版本、序列号、电池、存储、SIM 与 AssistiveTouch 状态）、`device_logs`、`assistivetouch(enabled: true|false)`。
 
-## 多会话
+## 5. Gemini 3.8 Flash 自主多步 `task(prompt, resume)` 与安全门禁
 
-- 各聊天独立连接同一个主程序，为操作传入完整手机 ID。不同手机可并行；同一手机每次操作、等待和结果截图使用同一把跨进程锁，截图请求也排队。进程退出会自动释放锁。
-- 锁保护单次工具调用，不隔离整段任务。其他会话可能在两次调用之间改变屏幕；继续之前重新截图确认当前页面。需要同时执行互不干扰的多步流程时，分别选择不同手机，或将同一手机的整段流程按顺序执行。
-- 收到设备忙时稍后重新截图再判断操作，不盲目重放旧坐标。恢复脚本会等正在执行的调用结束；还有其他手机可用时不会为了找不到某一台手机而重启共享主程序。
+对于跨界面的自然语言多步任务，可调用 `task(device: "Hermes", lease: "<id>", prompt: "...", thinking_level: "low|medium|high")`：
+- 内部基于 `gemini-3.8-flash` Interactions API（`computer_use` mobile `0..999` 网格坐标 + `previous_interaction_id` 多轮状态链）自主循环执行。
+- **三层敏感操作门禁**：遇到公开社交发布（如点击 `Post` / `发布`）、资金支付、密码输入或不可逆删除时，通过模型显式调用 `yield_to_user`、服务端 `safety_decision` 或客户端 OCR 命中拦截，任务会停在 `state: "yielded"` 并返回 `task` ID 与 `yield_reason`。
+- 收到 `yielded` 后，向用户展示发布前最后一步截图与待确认操作；获用户明确批准后，再调用 `task(resume: "<task_id>", approve: true, prompt: "...")` 继续完成。
 
-## 自动恢复
+## 6. MCP 传输断开时的单次自愈（`mcp_call.py`）
 
-连接失败时自动启动/重启手机主程序，是执行手机任务的一部分。不要因此询问用户是否重启，也不要只返回“未检测到 iPhone”。
-
-1. 传入上述配置，执行 `python3 <本技能目录>/scripts/ensure_service.py`；使用已选定的手机时增加 `--device <完整ID>`。脚本通过真实路径定位仓库，可在任意工作目录执行。
-2. 脚本会检查 HTTP 状态；主程序未运行时在后台启动它，运行中却没有设备时先等待发现，再只重启一次。它会保留 MCP 进程，并输出 JSON 状态和日志路径。已有手机且运行正常时直接复用；其他手机可用时保留共享服务。每个任务最多执行一轮恢复，多会话之间也有 60 秒恢复间隔，避免连续重启。
-3. 成功后通过可用的原生工具或独立连接重新调用 `list_devices`，对同一手机截图并继续原任务。重启只能恢复服务，不代表之前的手机动作已成功；不要自动重发发送、付款等可能已生效的动作。
-4. 仍无设备时读取返回的日志尾部，再说明已经尝试的恢复动作和具体阻塞：USB、解锁/信任、相机授权等确实需要用户处理时再提示。若已发现画面但 `bluetooth` 为 false，说明还需等蓝牙连接或 AssistiveTouch 配对，不把它误报成未连接手机。
-
-## 操作与检查
-
-- 首次操作前调用 `screenshot`。点击和滑动使用同一设备最近一次 MCP 截图中的像素坐标，长边最多 1200 像素；不要用桌面浏览器中缩放后的坐标。
-- 可用工具：`tap(x,y)`、`long_press(x,y,seconds)`、`swipe(points,duration)`、`type_text(text)`、`press_key(key,modifiers)`、`keyboard_sequence(steps)`、`home`。其中 `swipe.points` 至少有两个 `{x,y}` 点，`duration` 是整条路径的秒数。
-- 当前页面与焦点已确认、无需中间判断的键盘步骤可用 `keyboard_sequence`：每步为 `{"key":"l","modifiers":["cmd"]}` 或 `{"text":"ASCII文字"}`；最多 16 步、全部文本合计 256 字符，最后只截图一次。整组持有同一手机的 MCP 锁。失败可能已执行前面的输入，先重新截图，不整组重放。
-- 动作成功后工具会等待约 0.6 秒并返回截图。依据返回画面检查结果；页面仍加载时再截图，不盲目重复点击。
-- 重复任务按用户要求的次数执行，记录每轮结果。意外页面或相同失败连续出现时停止并报告实际画面与已完成进度。
-- 完成后说明检查到的结果；无法确认的步骤标明原因。
-
-### 应用导航与搜索
-
-- 需要打开或切换应用时，优先使用系统搜索；若截图已确认就在目标应用，直接继续操作。用 `press_key` 的 `cmd+space` 打开搜索，确认搜索框已聚焦后替换旧查询，输入应用名称、英文名或拼音。受 ASCII 输入限制时按下文处理输入法。
-- 从搜索结果核对应用名称和图标，点击匹配的应用结果；只有确认默认结果就是目标应用时才回车。中文输入法的拼音候选不等于应用结果，打开后截图确认已进入目标应用。
-- 搜索不可用或合理调整名称后仍找不到应用时，再使用主屏幕、App 资源库等入口。应用内导航根据当前画面选择，不复用历史任务的固定坐标。
-- 浏览器支持时，可用 `cmd+l` 聚焦地址栏、输入完整 URL 并回车；确认当前应用和焦点后才合并为键盘组合。搜索接口已知时，可按原站点参数构造 URL，使用标准 UTF-8 百分号编码（如 Python `urllib.parse.urlencode`）传递中文，保留用户指定的应用和搜索服务。
-- 应用内搜索可尝试已知账号或姓名拼音；匹配能力因应用而异。必须从结果核对目标姓名、账号及必要的组织信息，不能只凭拼音或同名命中认定目标。
-- 输入栏的候选项、跳转弹窗和加载中的旧页面都不是最终结果。按画面处理弹窗并继续截图，直到能检查目标页面和实际内容；查询所得事实从结果读取，不用会话日期或其他环境信息代替。
-
-### 文字与输入法
-
-- `type_text` 只发送美式键盘 ASCII，输出受手机当前输入法影响。输入账号、URL 等 ASCII 内容前也应确认输入法，不能假定按键会原样上屏。
-- 手机已配置简体拼音时，可用 `press_key` 的 `ctrl+space` 切换，检查选择浮层后输入 ASCII 拼音。先核对候选，再用空格或点击正确候选上屏，最后检查输入框中的实际中文；拼音组合态和候选栏不代表中文已提交。
-- 输入法切换、候选选择和最终草稿之间需要独立截图判断，不把这些步骤连同发送合并进 `keyboard_sequence`。候选不正确时先修正，不假定首选总是目标文字。
-
-### 提交与结果确认
-
-- 用户明确指定发送对象和内容时，核对当前目标与最终草稿后执行，无需重复确认；没有发送指示时保留草稿。通知遮住目标标题时，等待消失再核对，避免点击通知切换页面。
-- 根据当前应用的发送按钮或已确认的键盘设置提交一次；`enter` 可能发送、换行或只提交候选。检查新消息气泡、输入框状态及可见失败提示，不能把工具返回成功当作业务操作成功。
-- 提交报错或结果不确定时，先截图检查实际状态，不直接重发。检查结果时同时核对当前目标，避免其他会话、通知或手动操作改变页面后误判。
-
-### 指针落点与异常
-
-- 点击返回成功只代表输入已发送；截图未出现目标页面时，先区分加载未完成和落点错误。可切换到已确认的键盘入口，不连续猜偏移坐标或擅自改校准。
-- 点击落点偏移时，使用 `move_pointer(x,y)` 只定位并截图；必要时用 `adjust_pointer(dx,dy)` 小幅修正。微调为每轴 -32...32 的整数 HID 计数，不是像素。确认实际指针位于目标上后才用 `click_pointer` 原地点击；它不会再次定位。不同调用之间仍可能有其他会话移动指针，页面或落点改变时重新检查。通常仍用一次 `tap`，只在需要检查落点时拆分。
-- 点击仍无变化时，读取 `/status` 核对设备、蓝牙会话和校准尺寸；`pointer.ready: true` 只表示具备定位条件。恢复后重新检查实际落点，不将重启后恢复直接认定为根因修复。
-
-测试中积累的改进归纳为通用操作方法或代码修复，不固化单次任务的联系人、账号、坐标、时间和查询结果，也不按应用堆积操作记录。
-
-## 右侧画面
-
-用户需要实时查看时，用 Codex 的浏览器打开 `http://127.0.0.1:7390/viewer?device=<完整设备ID>`。自定义端口取该 MCP 配置中的 `IPHONE_USE_PORT`，默认 7390。预览页只显示画面，手机输入继续通过 MCP 工具完成。
+若宿主（Codex 或 AGY）内置 MCP 通道报 `Transport closed`：
+1. 运行 `python3 <skill_dir>/scripts/ensure_service.py --wait 6` 确认本地服务在线。
+2. 使用 `<skill_dir>/scripts/mcp_call.py` 发起单次全新 stdio 调用（支持全部 46 个工具）：
+   ```bash
+   python3 <skill_dir>/scripts/mcp_call.py setup_status --arguments '{"device":"Hermes"}'
+   python3 <skill_dir>/scripts/mcp_call.py screenshot --arguments '{"device":"Hermes","screentext":true}' --output-dir /tmp/iphone-use
+   ```
+3. 若写操作返回 `"may_have_executed": true`，重试前必须先 `screenshot` 或 `screentext` 核实画面是否已变化。

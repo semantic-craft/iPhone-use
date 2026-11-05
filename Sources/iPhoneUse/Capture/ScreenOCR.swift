@@ -6,26 +6,91 @@ import Vision
 
 /// Best-effort, local recognition of the exact screenshot bytes supplied by the caller.
 enum ScreenOCR {
-    struct Item {
+    /// Scrollable content band (`6% < y < 92%` of screen height) excluding the top status bar
+    /// (clock, battery, network indicators) and the bottom home indicator bar.
+    static let contentBandMinYFraction = 0.06
+    static let contentBandMaxYFraction = 0.92
+
+    struct Item: Equatable {
         let text: String
         let x: Int
         let y: Int
+        let boxX: Int
+        let boxY: Int
+        let width: Int
+        let height: Int
+        let confidence: Double
+        let source: String
 
-        init(text: String, box: CGRect, width: Int, height: Int) {
+        init(
+            text: String, box: CGRect, width: Int, height: Int,
+            confidence: Double = 1.0, source: String = "pixels"
+        ) {
             self.text = text
             let minX = box.minX * Double(width)
             let minY = (1 - box.maxY) * Double(height)
-            x = Int((minX + box.width * Double(width) / 2).rounded())
-            y = Int((minY + box.height * Double(height) / 2).rounded())
+            let w = max(1, Int((box.width * Double(width)).rounded()))
+            let h = max(1, Int((box.height * Double(height)).rounded()))
+            self.boxX = Int(minX.rounded())
+            self.boxY = Int(minY.rounded())
+            self.width = w
+            self.height = h
+            self.x = Int((minX + box.width * Double(width) / 2).rounded())
+            self.y = Int((minY + box.height * Double(height) / 2).rounded())
+            self.confidence = confidence
+            self.source = source
         }
 
-        init(text: String, x: Int, y: Int) {
+        init(
+            text: String, x: Int, y: Int,
+            boxX: Int? = nil, boxY: Int? = nil,
+            width: Int = 0, height: Int = 0,
+            confidence: Double = 1.0,
+            source: String = "pixels"
+        ) {
             self.text = text
             self.x = x
             self.y = y
+            let resolvedWidth = max(0, width)
+            let resolvedHeight = max(0, height)
+            self.width = resolvedWidth
+            self.height = resolvedHeight
+            self.boxX = boxX ?? (resolvedWidth > 0 ? x - resolvedWidth / 2 : x)
+            self.boxY = boxY ?? (resolvedHeight > 0 ? y - resolvedHeight / 2 : y)
+            self.confidence = confidence
+            self.source = source
         }
 
-        var json: [String: Any] { ["text": text, "x": x, "y": y] }
+        /// Ghosthand `screentext` line format: `x,y wxh text` in the screenshot coordinate space.
+        var screentextLine: String {
+            "\(boxX),\(boxY) \(width)x\(height) \(text)"
+        }
+
+        var lineJSON: [String: Any] {
+            [
+                "text": text,
+                "x": boxX,
+                "y": boxY,
+                "width": width,
+                "height": height,
+                "confidence": confidence,
+                "source": source,
+            ]
+        }
+
+        var json: [String: Any] {
+            [
+                "text": text,
+                "x": x,
+                "y": y,
+                "boxX": boxX,
+                "boxY": boxY,
+                "width": width,
+                "height": height,
+                "confidence": confidence,
+                "source": source,
+            ]
+        }
     }
 
     struct Result {
@@ -34,8 +99,51 @@ enum ScreenOCR {
         let items: [Item]
         var screenHash: String = ""
 
+        /// Filters recognized items by minimum confidence and/or the scrollable content band
+        /// (`0.06 < y / height < 0.92`), excluding volatile status-bar and home-indicator regions.
+        func filtering(minConfidence: Double? = nil, contentOnly: Bool = false) -> Result {
+            if minConfidence == nil && !contentOnly {
+                return self
+            }
+            let h = Double(max(1, height))
+            let filtered = items.filter { item in
+                if let minConfidence, item.confidence < minConfidence {
+                    return false
+                }
+                if contentOnly, height > 0 {
+                    let yFrac = Double(item.y) / h
+                    if yFrac <= ScreenOCR.contentBandMinYFraction || yFrac >= ScreenOCR.contentBandMaxYFraction {
+                        return false
+                    }
+                }
+                return true
+            }
+            return Result(width: width, height: height, items: filtered, screenHash: screenHash)
+        }
+
+        var screentext: String {
+            items.map(\.screentextLine).joined(separator: "\n")
+        }
+
+        var screenTextJSON: [String: Any] {
+            [
+                "width": width,
+                "height": height,
+                "lines": items.map(\.lineJSON),
+                "screentext": screentext,
+            ]
+        }
+
         func json(device: String) -> [String: Any] {
-            ["device": device, "width": width, "height": height, "items": items.map(\.json), "screenHash": screenHash]
+            [
+                "device": device,
+                "width": width,
+                "height": height,
+                "items": items.map(\.json),
+                "lines": items.map(\.lineJSON),
+                "screentext": screentext,
+                "screenHash": screenHash,
+            ]
         }
 
         var summary: String {
@@ -59,7 +167,15 @@ enum ScreenOCR {
             guard let text = item["text"] as? String, let x = item["x"] as? Int, let y = item["y"] as? Int else {
                 return nil
             }
-            items.append(Item(text: text, x: x, y: y))
+            let boxX = item["boxX"] as? Int
+            let boxY = item["boxY"] as? Int
+            let w = (item["width"] as? Int) ?? 0
+            let h = (item["height"] as? Int) ?? 0
+            let confidence = (item["confidence"] as? NSNumber)?.doubleValue ?? 1.0
+            items.append(
+                Item(
+                    text: text, x: x, y: y,
+                    boxX: boxX, boxY: boxY, width: w, height: h, confidence: confidence))
         }
         return Result(width: width, height: height, items: items, screenHash: hash)
     }
@@ -253,9 +369,84 @@ enum ScreenOCR {
         request.usesLanguageCorrection = true
         try VNImageRequestHandler(cgImage: image).perform([request])
         return (request.results ?? []).compactMap { observation -> Item? in
-            guard let text = observation.topCandidates(1).first?.string, !text.isEmpty else { return nil }
-            return Item(text: text, box: observation.boundingBox, width: image.width, height: image.height)
+            guard let candidate = observation.topCandidates(1).first, !candidate.string.isEmpty else { return nil }
+            return Item(
+                text: candidate.string, box: observation.boundingBox,
+                width: image.width, height: image.height, confidence: Double(candidate.confidence))
         }
     }
 
+    /// Formats a failure-informative OCR error that preserves `StringsAPI.current.ocrTextNotFound`
+    /// while appending up to 30 visible strings (`saw: [...]`) so agents do not need an extra
+    /// round-trip just to inspect what text was actually on screen.
+    static func formatNotFoundError(
+        query: String,
+        in result: Result,
+        baseMessage: String = StringsAPI.current.ocrTextNotFound
+    ) -> String {
+        let visible = result.items
+            .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !visible.isEmpty else {
+            return baseMessage
+        }
+        let sample = visible.prefix(30).map { item -> String in
+            let escaped = item.replacingOccurrences(of: "\"", with: "\\\"")
+            return "\"\(escaped)\""
+        }.joined(separator: ", ")
+        return "\(baseMessage) (query: \"\(query)\"; saw: [\(sample)])"
+    }
+
+    /// Ghosthand tiered OCR matching: exact full-line matches win over substring matches.
+    /// Supports both 0-based `index` and 1-based `oneBasedIndex` (top-to-bottom).
+    static func matchTiered(
+        _ result: Result,
+        text query: String,
+        exact: Bool = false,
+        index: Int? = nil,
+        oneBasedIndex: Bool = false,
+        requireExplicitIndexWhenMultiple: Bool = false
+    ) throws -> Item {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, result.width > 0, result.height > 0 else {
+            throw DeviceError(formatNotFoundError(query: query, in: result))
+        }
+        let exactMatches = result.items.filter { item in
+            exact
+                ? item.text == query
+                : item.text.caseInsensitiveCompare(query) == .orderedSame
+        }
+        let winningTier: [Item]
+        if !exactMatches.isEmpty {
+            winningTier = exactMatches
+        } else if exact {
+            winningTier = []
+        } else {
+            winningTier = result.items.filter {
+                $0.text.range(of: query, options: .caseInsensitive) != nil
+            }
+        }
+        guard !winningTier.isEmpty else {
+            throw DeviceError(formatNotFoundError(query: query, in: result))
+        }
+        if let rawIndex = index {
+            let resolvedIndex: Int
+            if oneBasedIndex {
+                resolvedIndex = rawIndex >= 1 ? rawIndex - 1 : rawIndex
+            } else {
+                resolvedIndex = rawIndex
+            }
+            guard resolvedIndex >= 0, resolvedIndex < winningTier.count else {
+                throw DeviceError(formatNotFoundError(query: query, in: result))
+            }
+            return winningTier[resolvedIndex]
+        }
+        if requireExplicitIndexWhenMultiple && winningTier.count > 1 {
+            let listing = winningTier.enumerated().map { offset, item in
+                "\(offset + 1). \"\(item.text)\" (\(item.boxX),\(item.boxY) \(item.width)x\(item.height))"
+            }.joined(separator: "; ")
+            throw DeviceError("multiple OCR matches for \"\(query)\": \(listing)")
+        }
+        return winningTier[0]
+    }
 }

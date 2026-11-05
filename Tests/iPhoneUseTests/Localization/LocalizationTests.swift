@@ -139,8 +139,13 @@ final class LocalizationTests: XCTestCase {
         let enTools = MCPToolCatalog.tools(for: .en)
         let zhTools = MCPToolCatalog.tools(for: .zh)
         let required: Set<String> = [
-            "list_devices", "screenshot", "ocr_screen", "tap_text", "move_pointer", "adjust_pointer", "click_pointer",
-            "tap", "long_press", "swipe", "type_text", "press_key", "keyboard_sequence", "home", "act",
+            "list_devices", "screenshot", "ocr_screen", "screentext", "tap_text", "move_pointer", "adjust_pointer",
+            "click_pointer", "tap", "double_tap", "triple_tap", "hold", "long_press", "swipe", "hold_drag", "scroll",
+            "type_text", "press_key", "keyboard_sequence", "home", "wake", "lock", "unlock", "mute", "unmute",
+            "record_start", "record_stop", "act", "setup_status", "acquire", "wait", "release",
+            "photo_list", "photo_pull", "photo_delete", "photo_push",
+            "file_list", "file_pull", "file_push", "file_remove",
+            "app_list", "open_app", "device_info", "device_logs", "assistivetouch", "task",
         ]
         func names(_ tools: [[String: Any]]) -> Set<String> {
             Set(tools.compactMap { $0["name"] as? String })

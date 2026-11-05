@@ -151,7 +151,7 @@ final class MCPProtocolTests: XCTestCase {
         let properties = try XCTUnwrap(schema["properties"] as? [String: [String: Any]])
         XCTAssertEqual(
             Set(properties.keys),
-            ["points", "duration", "normalized", "device", "device_id", "include_image", "observe"])
+            ["points", "duration", "normalized", "device", "device_id", "lease", "include_image", "observe"])
         let points = try XCTUnwrap(properties["points"])
         XCTAssertEqual(points["type"] as? String, "array")
         XCTAssertEqual(points["minItems"] as? Int, 2)
@@ -295,7 +295,7 @@ final class MCPOCRTests: XCTestCase {
 final class MCPKeyboardAliasTests: XCTestCase {
     func testEveryToolAdvertisesDeviceAliasAndOriginalWins() throws {
         let tools = MCPToolCatalog.tools(for: .en)
-        XCTAssertEqual(tools.count, 15)
+        XCTAssertEqual(tools.count, 46)
         for tool in tools {
             let schema = try XCTUnwrap(tool["inputSchema"] as? [String: Any])
             let properties = try XCTUnwrap(schema["properties"] as? [String: Any])

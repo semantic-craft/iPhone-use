@@ -24,6 +24,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMenus()
         QuietModeActivityController.shared.start()
+        IdleKeepAliveController.shared.start {
+            DeviceRegistry.shared.all().compactMap { device in
+                guard let input = try? DeviceRegistry.shared.input(for: device) else { return nil }
+                let lockState = device.lockState
+                return IdleKeepAliveController.MonitoredDevice(
+                    id: device.id,
+                    hasUSBFrame: device.screen.size != nil,
+                    isLocked: lockState == .suspected || lockState == .paused,
+                    isBluetoothReady: input.isBluetoothReady,
+                    lastInputUptime: input.lastInputUptime,
+                    sendControlTap: { input.sendControlKeepAlive() }
+                )
+            }
+        }
         windows.start()
         if AppRunModeStore.shared.mode == .desktop {
             NSApp.activate(ignoringOtherApps: true)
@@ -58,6 +72,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let runModeObserver { NotificationCenter.default.removeObserver(runModeObserver) }
         runModeObserver = nil
         QuietModeActivityController.shared.stop()
+        IdleKeepAliveController.shared.stop()
+        ScreenRecorderManager.shared.stopAllForDaemonShutdown()
         windows.stop()
         let stopResult = ScreenCaptureManager.shared.stop(waitTimeout: Application.shutdownWaitTimeout)
         if !stopResult.isClean {
@@ -248,6 +264,8 @@ enum Application {
             signal(sig, SIG_IGN)
             let source = DispatchSource.makeSignalSource(signal: sig, queue: .main)
             source.setEventHandler {
+                IdleKeepAliveController.shared.stop()
+                ScreenRecorderManager.shared.stopAllForDaemonShutdown()
                 server.stop()
                 let stopResult = ScreenCaptureManager.shared.stop(waitTimeout: Self.shutdownWaitTimeout)
                 if !stopResult.isClean {
