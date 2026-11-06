@@ -152,4 +152,32 @@ final class ControlTrackTests: XCTestCase {
             XCTAssertTrue("\(error)".contains("disabled in standard mode"))
         }
     }
+
+    func testNormalizedCoordinatesPreserveFractionsOnFallback() throws {
+        var pointerReports: [[UInt8]] = []
+        let dummyInput = DeviceInput(
+            host: UUID(),
+            session: UUID(),
+            sleep: { _ in },
+            reportSender: { reportID, bytes in
+                if reportID == .absolutePointer {
+                    pointerReports.append(bytes)
+                }
+            },
+            reportReadiness: { _, _, _ in true }
+        )
+        let coordinator = DualTrackInputCoordinator(
+            udid: "non-existent-device-udid",
+            mode: .auto,
+            standardInputResolver: { dummyInput }
+        )
+
+        try coordinator.tap(x: 0.5, y: 0.5, screenWidth: 1179, screenHeight: 2556)
+        XCTAssertFalse(pointerReports.isEmpty)
+        let firstReport = try XCTUnwrap(pointerReports.first)
+        let rawX = UInt16(firstReport[1]) | (UInt16(firstReport[2]) << 8)
+        let rawY = UInt16(firstReport[3]) | (UInt16(firstReport[4]) << 8)
+        XCTAssertEqual(rawX, 16384, accuracy: 2)
+        XCTAssertEqual(rawY, 16384, accuracy: 2)
+    }
 }

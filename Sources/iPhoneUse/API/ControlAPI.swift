@@ -817,37 +817,6 @@ enum ControlAPI {
             try authorizeDeviceLease(deviceID: effectiveDeviceID, leaseID: leaseID, command: "screenshot")
         }
 
-        if resolvedDevice?.screen.size == nil,
-            RuntimeEnvironment.isLiveHardwareAllowed(),
-            let usbDevice = MobileDeviceLockdownBridge.findDevice(
-                matching: resolvedDevice?.screen.name ?? deviceQuery)
-        {
-            let activeApp = StateDirUSBSystemProvider.shared.activeApp(for: effectiveDeviceID)
-            let rendered = MobileDeviceLockdownBridge.renderLiveHardwareScreenPNG(
-                for: usbDevice,
-                activeApp: activeApp,
-                maxWidth: maxWidth,
-                maxEdge: maxEdge
-            )
-            let size = rendered.screenSize
-            let image = RequestCoordinates.imageSize(size, maxWidth: maxWidth, maxEdge: maxEdge)
-            var headers = [
-                "X-Device": effectiveDeviceID,
-                "X-Screen-Width": "\(Int(size.width))", "X-Screen-Height": "\(Int(size.height))",
-                "X-Image-Width": "\(image.0)", "X-Image-Height": "\(image.1)",
-            ]
-            if isNative {
-                headers["X-Note"] = "deleted"
-            }
-            if includeOCR {
-                let ocr = ScreenOCR.recognize(rendered.data, device: effectiveDeviceID)
-                headers["X-Screen-OCR"] = try JSONSerialization.data(
-                    withJSONObject: ocr.json(device: effectiveDeviceID)
-                ).base64EncodedString()
-            }
-            return HTTPResponse(contentType: "image/png", headers: headers, body: rendered.data)
-        }
-
         let device = try resolvedDevice ?? DeviceRegistry.shared.find(deviceQuery)
         guard let size = device.screen.size else {
             if let error = device.screen.captureError {
@@ -922,38 +891,6 @@ enum ControlAPI {
     }
 
     private static func captureTextScreen(_ query: String?, _ maxEdge: Int?) throws -> (String, Data) {
-        if let device = try? DeviceRegistry.shared.find(query) {
-            if let data = device.screen.snapshot(png: true, maxEdge: maxEdge) {
-                return (device.id, data)
-            }
-            if RuntimeEnvironment.isLiveHardwareAllowed(),
-                let usbDevice = MobileDeviceLockdownBridge.findDevice(matching: device.screen.name)
-                    ?? MobileDeviceLockdownBridge.findDevice(matching: query)
-            {
-                let activeApp = StateDirUSBSystemProvider.shared.activeApp(for: device.id)
-                let rendered = MobileDeviceLockdownBridge.renderLiveHardwareScreenPNG(
-                    for: usbDevice,
-                    activeApp: activeApp,
-                    maxEdge: maxEdge
-                )
-                return (device.id, rendered.data)
-            }
-            if let error = device.screen.captureError {
-                throw DeviceError(StringsAPI.current.captureFailedFromDevice(device.screen.name, error))
-            }
-            throw DeviceError(StringsAPI.current.noFrameFromDevice(device.screen.name))
-        }
-        if RuntimeEnvironment.isLiveHardwareAllowed(),
-            let usbDevice = MobileDeviceLockdownBridge.findDevice(matching: query)
-        {
-            let activeApp = StateDirUSBSystemProvider.shared.activeApp(for: usbDevice.udid)
-            let rendered = MobileDeviceLockdownBridge.renderLiveHardwareScreenPNG(
-                for: usbDevice,
-                activeApp: activeApp,
-                maxEdge: maxEdge
-            )
-            return (usbDevice.udid, rendered.data)
-        }
         let device = try DeviceRegistry.shared.find(query)
         guard let data = device.screen.snapshot(png: true, maxEdge: maxEdge) else {
             if let error = device.screen.captureError {

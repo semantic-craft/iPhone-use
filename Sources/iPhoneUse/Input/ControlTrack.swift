@@ -184,7 +184,7 @@ final class EnhancedInputDriver {
         }
     }
 
-    private func normalize(
+    func normalize(
         x: Double,
         y: Double,
         screenWidth: Double,
@@ -193,10 +193,17 @@ final class EnhancedInputDriver {
         guard screenWidth > 1, screenHeight > 1 else {
             throw DeviceError("Invalid screen dimensions for enhanced input coordinate normalization.")
         }
-        let clampedX = max(0, min(x, screenWidth - 1))
-        let clampedY = max(0, min(y, screenHeight - 1))
-        let normX = Int(round((clampedX / (screenWidth - 1)) * 65535.0))
-        let normY = Int(round((clampedY / (screenHeight - 1)) * 65535.0))
+        let fracX: Double
+        let fracY: Double
+        if x >= 0.0, x <= 1.0, y >= 0.0, y <= 1.0 {
+            fracX = x
+            fracY = y
+        } else {
+            fracX = max(0, min(1.0, x / (screenWidth - 1)))
+            fracY = max(0, min(1.0, y / (screenHeight - 1)))
+        }
+        let normX = Int(round(fracX * 65535.0))
+        let normY = Int(round(fracY * 65535.0))
         return (normX, normY)
     }
 
@@ -432,6 +439,24 @@ final class DualTrackInputCoordinator {
         }
     }
 
+    private func toFractions(
+        x: Double,
+        y: Double,
+        screenWidth: Double,
+        screenHeight: Double
+    ) -> (Double, Double) {
+        if x >= 0.0, x <= 1.0, y >= 0.0, y <= 1.0 {
+            return (x, y)
+        }
+        guard screenWidth > 1, screenHeight > 1 else {
+            return (max(0, min(1, x)), max(0, min(1, y)))
+        }
+        return (
+            max(0, min(1.0, x / (screenWidth - 1))),
+            max(0, min(1.0, y / (screenHeight - 1)))
+        )
+    }
+
     func tap(
         x: Double,
         y: Double,
@@ -439,17 +464,18 @@ final class DualTrackInputCoordinator {
         screenHeight: Double,
         hold: TimeInterval = 0.08
     ) throws {
+        let (fx, fy) = toFractions(x: x, y: y, screenWidth: screenWidth, screenHeight: screenHeight)
         try executeWithFallback(
             actionName: "tap",
             enhanced: {
                 try enhancedDriver.tap(
-                    x: x, y: y,
+                    x: fx, y: fy,
                     screenWidth: screenWidth, screenHeight: screenHeight,
                     durationMs: Int(hold * 1000)
                 )
             },
             standard: { std in
-                try std.tap(x: x, y: y, hold: hold)
+                try std.tap(x: fx, y: fy, hold: hold)
             }
         )
     }
@@ -462,17 +488,18 @@ final class DualTrackInputCoordinator {
         hold: TimeInterval = 0.22,
         gap: TimeInterval = 0.12
     ) throws {
+        let (fx, fy) = toFractions(x: x, y: y, screenWidth: screenWidth, screenHeight: screenHeight)
         try executeWithFallback(
             actionName: "doubleTap",
             enhanced: {
                 try enhancedDriver.doubleTap(
-                    x: x, y: y,
+                    x: fx, y: fy,
                     screenWidth: screenWidth, screenHeight: screenHeight,
                     durationMs: Int(hold * 1000)
                 )
             },
             standard: { std in
-                try std.doubleTap(x: x, y: y, hold: hold, gap: gap)
+                try std.doubleTap(x: fx, y: fy, hold: hold, gap: gap)
             }
         )
     }
@@ -485,17 +512,18 @@ final class DualTrackInputCoordinator {
         hold: TimeInterval = 0.22,
         gap: TimeInterval = 0.12
     ) throws {
+        let (fx, fy) = toFractions(x: x, y: y, screenWidth: screenWidth, screenHeight: screenHeight)
         try executeWithFallback(
             actionName: "tripleTap",
             enhanced: {
-                try enhancedDriver.tap(x: x, y: y, screenWidth: screenWidth, screenHeight: screenHeight, durationMs: Int(hold * 1000))
+                try enhancedDriver.tap(x: fx, y: fy, screenWidth: screenWidth, screenHeight: screenHeight, durationMs: Int(hold * 1000))
                 Thread.sleep(forTimeInterval: gap)
-                try enhancedDriver.tap(x: x, y: y, screenWidth: screenWidth, screenHeight: screenHeight, durationMs: Int(hold * 1000))
+                try enhancedDriver.tap(x: fx, y: fy, screenWidth: screenWidth, screenHeight: screenHeight, durationMs: Int(hold * 1000))
                 Thread.sleep(forTimeInterval: gap)
-                try enhancedDriver.tap(x: x, y: y, screenWidth: screenWidth, screenHeight: screenHeight, durationMs: Int(hold * 1000))
+                try enhancedDriver.tap(x: fx, y: fy, screenWidth: screenWidth, screenHeight: screenHeight, durationMs: Int(hold * 1000))
             },
             standard: { std in
-                try std.tripleTap(x: x, y: y, hold: hold, gap: gap)
+                try std.tripleTap(x: fx, y: fy, hold: hold, gap: gap)
             }
         )
     }
@@ -507,17 +535,18 @@ final class DualTrackInputCoordinator {
         screenHeight: Double,
         duration: TimeInterval = 1.0
     ) throws {
+        let (fx, fy) = toFractions(x: x, y: y, screenWidth: screenWidth, screenHeight: screenHeight)
         try executeWithFallback(
             actionName: "hold",
             enhanced: {
                 try enhancedDriver.hold(
-                    x: x, y: y,
+                    x: fx, y: fy,
                     screenWidth: screenWidth, screenHeight: screenHeight,
                     durationMs: Int(duration * 1000)
                 )
             },
             standard: { std in
-                try std.hold(x: x, y: y, duration: duration)
+                try std.hold(x: fx, y: fy, duration: duration)
             }
         )
     }
@@ -531,18 +560,20 @@ final class DualTrackInputCoordinator {
         screenHeight: Double,
         duration: TimeInterval = 0.5
     ) throws {
+        let (fx1, fy1) = toFractions(x: fromX, y: fromY, screenWidth: screenWidth, screenHeight: screenHeight)
+        let (fx2, fy2) = toFractions(x: toX, y: toY, screenWidth: screenWidth, screenHeight: screenHeight)
         try executeWithFallback(
             actionName: "swipe",
             enhanced: {
                 try enhancedDriver.swipe(
-                    fromX: fromX, fromY: fromY,
-                    toX: toX, toY: toY,
+                    fromX: fx1, fromY: fy1,
+                    toX: fx2, toY: fy2,
                     screenWidth: screenWidth, screenHeight: screenHeight,
                     durationMs: Int(duration * 1000)
                 )
             },
             standard: { std in
-                try std.swipe(points: [(fromX, fromY), (toX, toY)], duration: duration)
+                try std.swipe(points: [(fx1, fy1), (fx2, fy2)], duration: duration)
             }
         )
     }
