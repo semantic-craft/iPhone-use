@@ -595,6 +595,9 @@ final class DualTrackInputCoordinator {
     }
 
     func getAXTree(includeOffscreen: Bool = false) throws -> [String: Any] {
+        if mode == .standard {
+            throw DeviceError("AX Tree inspection is disabled in standard mode to preserve retail channel isolation.")
+        }
         if !enhancedDriver.isAvailable {
             throw DeviceError("AX Tree inspection requires enhanced track with Developer Mode.")
         }

@@ -141,4 +141,15 @@ final class ControlTrackTests: XCTestCase {
         let decJson = try XCTUnwrap(json["decision"] as? [String: Any])
         XCTAssertEqual(decJson["mode"] as? String, "standard")
     }
+
+    func testStandardModeBlocksAXTreeInspection() throws {
+        let coordinator = DualTrackInputCoordinator(
+            udid: "test-device-standard",
+            mode: .standard,
+            standardInputResolver: { throw DeviceError("Device disconnected") }
+        )
+        XCTAssertThrowsError(try coordinator.getAXTree()) { error in
+            XCTAssertTrue("\(error)".contains("disabled in standard mode"))
+        }
+    }
 }

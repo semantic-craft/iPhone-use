@@ -836,7 +836,7 @@ struct MCPToolRequest {
             let mode = (arguments["mode"] as? String) ?? "auto"
             return MCPToolRequest(path: "/track/switch", body: withDevice(["mode": mode], device))
         case "get_track_status", "track_status":
-            return MCPToolRequest(path: "/track", body: withDevice([:], device))
+            return MCPToolRequest(path: "/track/status", body: withDevice([:], device))
         case "get_ax_tree", "ax_tree":
             var body: [String: Any] = [:]
             if let inc = arguments["include_offscreen"] { body["include_offscreen"] = inc }

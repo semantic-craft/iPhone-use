@@ -1492,19 +1492,27 @@ enum ControlAPI {
                 throw DeviceError("No iPhone selected or available.")
             }
             let rawMode = (params["mode"] as? String) ?? (params["track"] as? String)
-            guard let targetMode = ControlTrackMode.parse(rawMode) else {
-                throw DeviceError("Invalid track mode. Expected 'standard', 'enhanced', or 'auto'.")
-            }
             let coordinator: DualTrackInputCoordinator
             if let dev = try? DeviceRegistry.shared.find(targetID) {
                 coordinator = DeviceRegistry.shared.coordinator(for: dev)
             } else {
                 coordinator = DualTrackInputCoordinator(
                     udid: targetID,
-                    mode: targetMode,
+                    mode: .auto,
                     standardInputResolver: { throw DeviceError("Device disconnected") }
                 )
             }
+            if rawMode == nil || rawMode?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+                return .json([
+                    "ok": true,
+                    "device": targetID,
+                    "track": coordinator.status.json,
+                ])
+            }
+            guard let targetMode = ControlTrackMode.parse(rawMode) else {
+                throw DeviceError("Invalid track mode. Expected 'standard', 'enhanced', or 'auto'.")
+            }
+            try authorizeDeviceLease(deviceID: targetID, leaseID: leaseID, command: "track_switch")
             coordinator.switchMode(targetMode)
             return .json([
                 "ok": true,
@@ -1550,11 +1558,24 @@ enum ControlAPI {
                 "ok": true,
                 "decision": decision.json,
             ]
-            if apply, let dev = try? DeviceRegistry.shared.find(deviceQuery) {
-                let coord = DeviceRegistry.shared.coordinator(for: dev)
-                coord.switchMode(decision.mode)
-                response["device"] = dev.id
-                response["track"] = coord.status.json
+            if apply {
+                let targetID: String
+                if let dev = try? DeviceRegistry.shared.find(deviceQuery) {
+                    targetID = dev.id
+                } else if let ctx = try? resolveUSBContext(
+                    deviceQuery: deviceQuery, leaseID: leaseID, command: "track_decide",
+                    deviceCandidates: deviceCandidates, runtimeHooks: runtimeHooks) {
+                    targetID = ctx.deviceID
+                } else {
+                    targetID = deviceQuery ?? "default"
+                }
+                try authorizeDeviceLease(deviceID: targetID, leaseID: leaseID, command: "track_decide")
+                if let dev = try? DeviceRegistry.shared.find(targetID) {
+                    let coord = DeviceRegistry.shared.coordinator(for: dev)
+                    coord.switchMode(decision.mode)
+                    response["device"] = dev.id
+                    response["track"] = coord.status.json
+                }
             }
             return .json(response)
 
@@ -1881,22 +1902,30 @@ enum ControlAPI {
                 click: (body["click"] as? Bool) ?? false)
         case .type:
             guard let text = body["text"] as? String else { return .error(StringsAPI.current.textRequired) }
-            var parameters = body
-            parameters["text"] = text
-            try TypeTextRequest(parameters, language: AppLanguageStore.shared.language).perform(
-                on: input,
-                ocr: {
-                    if let runtimeHooks {
-                        return (try? runtimeHooks.captureFrame(false, 1600)).map {
-                            runtimeHooks.recognizeOCR($0, targetID)
+            let clear = PostActionOptions.parseBoolFlag(body["clear"]) ?? false
+            let submit = PostActionOptions.parseBoolFlag(body["submit"]) ?? false
+            if let dev = try? DeviceRegistry.shared.find(targetID),
+               DeviceRegistry.shared.coordinator(for: dev).mode == .enhanced {
+                let coordinator = DeviceRegistry.shared.coordinator(for: dev)
+                try coordinator.type(text: text, clear: clear, submit: submit)
+            } else {
+                var parameters = body
+                parameters["text"] = text
+                try TypeTextRequest(parameters, language: AppLanguageStore.shared.language).perform(
+                    on: input,
+                    ocr: {
+                        if let runtimeHooks {
+                            return (try? runtimeHooks.captureFrame(false, 1600)).map {
+                                runtimeHooks.recognizeOCR($0, targetID)
+                            }
                         }
-                    }
-                    return (try? DeviceRegistry.shared.find(deviceQuery)).flatMap { dev in
-                        dev.screen.snapshot(png: false, maxEdge: 1600).map {
-                            ScreenOCR.recognize($0, device: dev.id)
+                        return (try? DeviceRegistry.shared.find(deviceQuery)).flatMap { dev in
+                            dev.screen.snapshot(png: false, maxEdge: 1600).map {
+                                ScreenOCR.recognize($0, device: dev.id)
+                            }
                         }
-                    }
-                })
+                    })
+            }
         case .key:
             guard let key = body["key"] as? String else { return .error(StringsAPI.current.keyRequired) }
             if key.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare("mute") == .orderedSame {

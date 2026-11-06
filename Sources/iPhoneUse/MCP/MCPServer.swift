@@ -243,6 +243,9 @@ enum MCPServer {
                             case .request(let request):
                                 var body = request.body
                                 body["device"] = device
+                                if let leaseID {
+                                    body["lease"] = leaseID.description
+                                }
                                 lastPostResponse = try client.post(request.path, body)
                             }
                         } catch {

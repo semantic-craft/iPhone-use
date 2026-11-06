@@ -1444,9 +1444,6 @@ enum MobileDeviceLockdownBridge {
         }) {
             return prefix
         }
-        if devices.count == 1 {
-            return devices.first
-        }
         return nil
     }
 
