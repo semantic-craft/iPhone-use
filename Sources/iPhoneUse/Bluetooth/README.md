@@ -1,0 +1,45 @@
+# Bluetooth
+
+## Overview
+
+Exposes the Mac as a Bluetooth Low Energy (BLE) HID-over-GATT keyboard, absolute pointer, relative mouse, and consumer-control peripheral (`HIDPeripheral`) and manages per-host GATT subscription state, backpressure report queues, outbound central reconnect budgets, and display/sleep/demand lifecycle policies (`HIDConnectionState`, `HIDReconnectTracker`, `HIDLifecyclePolicy`, `HIDReports`).
+
+## Interface
+
+- `[HIDConnectionState.swift:HIDConnectionState]` - Value-type state machine managing per-host BLE HID channel subscriptions (`subscriptions`), active input session tokens (`sessions`), and backpressure-queued notifications (`pending`), with nested `Channel` (`.report(ReportID)`, `.serviceChanged`, `.battery`) and `PendingReport` types and methods `isReady(report:host:session:)`, `subscribe(_:host:)`, `unsubscribe(_:host:)`, `enqueue(_:data:host:session:isAllowed:)`, `nextPendingReportIndex(excludingHosts:onDrop:)`, `nextPendingReport()`, `removePending(at:)`, `removeFirst()`, and `reset()`.
+- `[HIDConnectionState.swift:HIDReconnectTracker]` - Bounded state machine (`maxAutomaticAttempts = 3`, `retryDelays = [2.0, 6.0]`, nested `Phase` and `DisconnectFollowUp` enums) tracking outbound BLE central wake/reconnect attempts via `updateTargets(_:activeSessions:resetExhausted:)`, `connectableHosts(activeSessions:)`, `beginConnecting(_:)`, `markUnretrievable(_:)`, `noteSessionEstablished(_:)`, `markTimedOut(host:attempt:hasActiveSession:)`, `handleTermination(host:hasActiveSession:)`, `completeBackoff(host:token:hasActiveSession:)`, `reconnectingHosts(activeSessions:)`, `cancelEstablishedOnPeripheralReset()`, `cancelAllForStop()`, `suspendForLifecycleTeardown()`, and `resetForCentralPowerOff()`.
+- `[HIDConnectionState.swift:HIDOnlineDisplayState]` - `Equatable`, `Sendable` enum (`.noOnlineDisplays`, `.allAsleep`, `.atLeastOneAwake`, `.unknown`) classifying CoreGraphics online display power state via `classify(countQueryError:reportedCount:listQueryError:resolvedCount:asleepFlags:)`.
+- `[HIDConnectionState.swift:HIDLifecyclePolicy]` - `Equatable` policy struct (`InactiveReason` enum, `unknownDisplayRetryDelays = [0.25, 1.0, 3.0]`, `shouldRunCoreBluetooth`, `hasEffectiveDemand`, `inactiveReason`) governing CoreBluetooth manager activation across `start(initialDisplayState:)`, `stop()`, `systemWillSleep()`, `systemDidWake(displayState:)`, `screensDidSleep()`, `screensDidWake()`, `nextUnknownDisplayRetry()`, `resolveUnknownDisplayQuery(_:generation:)`, `setUSBScreenDemand(_:revision:)`, `beginWindowDemand(_:)`, `endWindowDemand(_:)`, and `setResidentQuietDemand(_:)`.
+- `[HIDPeripheral.swift:HIDPeripheral]` - `final class` (`NSObject`, `CBPeripheralManagerDelegate`, `CBCentralManagerDelegate`) publishing the BLE HID over GATT service (`shared`, `localName = "iPhone Use"`, `state`, `onHostsChanged`, `connectedHosts`, `reconnectingHosts`, `hostDetails`) and providing lifecycle, connection, and report transmission entry points (`onlineDisplayState()`, `start(initialDisplayState:)`, `stop()`, `systemWillSleep()`, `systemDidWake(displayState:)`, `screensDidSleep()`, `screensDidWake()`, `setUSBScreenDemand(_:revision:)`, `beginWindowDemand(_:)`, `endWindowDemand(_:)`, `setResidentQuietDemand(_:)`, `refreshDisplayStateIfNeeded()`, `reconnectKnownHosts(_:resetExhausted:)`, `hostsToReconnect(pairings:presentScreenIDs:matchedScreenIDs:connectedHosts:)`, `subscribedPointerReports(for:session:)`, `connectionSession(for:)`, `isReady(report:host:session:)`, `send(_:_:to:session:isAllowed:)`, `recordSubscription(_:host:connections:reconnectTracker:)`).
+- `[HIDReports.swift:ReportID]` - `UInt8` enum of HID report identifiers (`.keyboard = 1`, `.absolutePointer = 2`, `.relativeMouse = 3`, `.consumer = 4`).
+- `[HIDReports.swift:HIDReportMap]` - Namespace enum defining `absoluteMax = 32767` and raw HID descriptor byte arrays (`descriptor`, `keyboard`, `absolutePointer`, `relativeMouse`, `consumer`).
+- `[HIDReports.swift:HIDReportPayload]` - Namespace enum building raw GATT HID notification payloads without a leading Report ID byte (`keyboard(modifiers:code:)`, `absolutePointer(buttons:x:y:)`, `relativeMouse(buttons:dx:dy:wheel:)`, `consumer(_:)`).
+
+## Invariants
+
+- `[HIDConnectionState.swift:HIDConnectionState.PendingReport.permissionIsCurrent]` - Zero-filled release payloads for `.relativeMouse`, `.keyboard`, and `.consumer` always evaluate `permissionIsCurrent == true` regardless of `isAllowed`, preventing stuck buttons or keys after permission revocation.
+- `[HIDConnectionState.swift:HIDConnectionState.subscribe]` - A host has an active session token in `sessions[host]` if and only if at least one input channel (`channel.isInput == true`) is present in `subscriptions[host]`; unsubscribing the last input channel clears `sessions[host]` and purges all pending input reports for that host.
+- `[HIDConnectionState.swift:HIDConnectionState.enqueue]` - Input reports require a non-nil `session` matching `sessions[host]`; under CoreBluetooth backpressure, only consecutive `.report(.absolutePointer)` notifications for the same host with identical button masks (`data.first`) are coalesced in place.
+- `[HIDConnectionState.swift:HIDReconnectTracker]` - Automatic outbound reconnect attempts per host are capped at `maxAutomaticAttempts` (`3`) with backoff delays `[2.0, 6.0]` seconds, and `.cancelling` hosts wait for CoreBluetooth disconnect completion before starting a new attempt.
+- `[HIDConnectionState.swift:HIDLifecyclePolicy]` - Calling `stop()` sets `isPermanentlyStopped = true` irreversibly; `systemDidWake(displayState:)` with `.allAsleep` or `.unknown` keeps `isSystemSleeping == true` to prevent DarkWake GATT advertising; `setUSBScreenDemand(_:revision:)` ignores stale revisions (`revision <= lastUSBDemandRevision`).
+- `[HIDPeripheral.swift:queue]` - All GATT services, subscriptions, session tokens, and pending report queues are owned by the serial `iphone-use.bluetooth` dispatch queue; the `isAllowed` closure passed to `send(_:_:to:session:isAllowed:)` executes on this queue and must not call synchronous `HIDPeripheral` readers.
+- `[HIDPeripheral.swift:systemWillSleep]` - Synchronously unregisters `CBPeripheralManager` and `CBCentralManager` via `queue.sync` before returning so `bluetoothd` tears down the session prior to macOS sleep acknowledgment.
+- `[HIDPeripheral.swift:buildServices]` - GATT service publication order (`0x1801` Generic Attribute, `0x1812` HID, `0x180A` Device Information, `0x180F` Battery) and `HIDReportMap.descriptor` layout remain fixed for bonded hosts that cache GATT handles.
+- `[HIDPeripheral.swift:recordSubscription]` - Subscribing to an input characteristic never enqueues an unsolicited zeroed report; idle report values are served only on explicit GATT read (`peripheralManager(_:didReceiveRead:)`) so `absolutePointer` does not jump to `(0, 0)` on reconnect.
+- `[HIDPeripheral.swift:drain]` - Halts notification draining for any host whose `updateValue` call returns `false` (adding that host to `blockedHosts`) to preserve per-host FIFO order while continuing to drain reports for other subscribed hosts.
+- `[HIDReports.swift:HIDReportPayload]` - Notification payloads omit the leading Report ID byte (carried by GATT Report Reference descriptor `0x2908`) and clamp `relativeMouse` deltas (`dx`, `dy`, `wheel`) to `-127...127`.
+
+## Side Effects
+
+- `[HIDPeripheral.swift:onlineDisplayState]` - Queries macOS display power state via CoreGraphics `CGGetOnlineDisplayList` and `CGDisplayIsAsleep`.
+- `[HIDPeripheral.swift:applyCoreBluetoothLifecycleOnQueue]` - Instantiates or tears down `CBPeripheralManager` and `CBCentralManager` on the Bluetooth queue, starts/stops BLE advertising, and cancels active `CBPeripheral` connections.
+- `[HIDPeripheral.swift:addNextService]` - Mutates the local CoreBluetooth GATT database via `manager.add(_:)` and starts BLE advertising (`manager.startAdvertising(_:)`) with service UUID `0x1812` and local name `"iPhone Use"`.
+- `[HIDPeripheral.swift:drain]` - Sends BLE GATT characteristic notifications and indications to subscribed centrals via `manager.updateValue(_:for:onSubscribedCentrals:)`.
+- `[HIDPeripheral.swift:peripheralManager(_:didReceiveRead:)]` - Responds to ATT Read requests from connected centrals via `peripheral.respond(to:withResult:)`.
+- `[HIDPeripheral.swift:peripheralManager(_:didReceiveWrite:)]` - Responds to ATT Write requests via `peripheral.respond(to:withResult:)` and enqueues a one-shot GATT Service Changed (`0x2A05`) indication via `recoverStaleCacheIfNeeded(_:)` when a host with a stale cache writes to HID Control Point (`0x2A4C`).
+- `[HIDPeripheral.swift:attemptReconnections]` - Queries `CBCentralManager.retrievePeripherals(withIdentifiers:)`, initiates outbound BLE central connections (`centralManager.connect(_:options:)`), and schedules 12-second connection timeout work items.
+- `[HIDPeripheral.swift:tracePointer]` - Reads `IPHONE_USE_TRACE_POINTER` from `ProcessInfo.processInfo.environment` and writes rate-limited pointer trace entries via `log(_:)`.
+
+## Verification
+
+- Run: `swift test`

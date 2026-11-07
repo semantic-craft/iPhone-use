@@ -202,6 +202,47 @@ python3 -B scripts/check-mcp.py
 
 硬件相关修改还需在真机上检查配对、USB 重连、指针落点和窗口交互。格式化与维护约定见[架构说明](docs/architecture.md)。
 
+## System Overview
+
+`iphone-use` is a macOS 14+ Swift 6 executable and automation toolkit (`Package.swift` target `iPhoneUse`) that streams real iPhone video over USB (`AVFoundation` / `CoreMediaIO`), injects pointer and keyboard input over Bluetooth LE HID-over-GATT (`CoreBluetooth`) with optional enhanced native bridge routing (`poki-native`), and exposes a shared control plane across an AppKit desktop UI, a localhost HTTP control API (`127.0.0.1:7390`), a stdio Model Context Protocol (MCP) server (50 tools), a one-shot CLI (`CLIRunner`), and an autonomous multi-step Gemini task executor (`gemini-3.8-flash`).
+
+## Subdirectories & System Boundaries
+
+- `Sources`: [./Sources/README.md](./Sources/README.md) - Swift source root housing the [iPhoneUse](./Sources/iPhoneUse/README.md) executable target (`main.swift`) and its 12 subsystem packages:
+  - `Sources/iPhoneUse/API`: [./Sources/iPhoneUse/API/README.md](./Sources/iPhoneUse/API/README.md) - Localhost HTTP server (`HTTPServer`), live web viewer (`WebPreview`), and `ControlAPI` request router.
+  - `Sources/iPhoneUse/App`: [./Sources/iPhoneUse/App/README.md](./Sources/iPhoneUse/App/README.md) - macOS application lifecycle (`Application`, `AppDelegate`), run-mode persistence (`AppRunModeStore`), and resident-quiet idle capture suspension (`QuietModeActivityController`).
+  - `Sources/iPhoneUse/Bluetooth`: [./Sources/iPhoneUse/Bluetooth/README.md](./Sources/iPhoneUse/Bluetooth/README.md) - BLE HID-over-GATT peripheral (`HIDPeripheral`), per-host GATT subscription state (`HIDConnectionState`), reconnect budget tracker (`HIDReconnectTracker`), and HID payload builders (`HIDReports`).
+  - `Sources/iPhoneUse/CLI`: [./Sources/iPhoneUse/CLI/README.md](./Sources/iPhoneUse/CLI/README.md) - Command-line subcommand and flag parser (`CLIRunner`) dispatching in-process to `ControlAPI.handle` or spawning `phone_exec.py`.
+  - `Sources/iPhoneUse/Capture`: [./Sources/iPhoneUse/Capture/README.md](./Sources/iPhoneUse/Capture/README.md) - USB video capture (`ScreenCaptureManager`), multi-device screenshotr identity verification (`CaptureIdentityVerifier`, `USBIdentityScreenshot`), dormant USB Valeria recovery (`CaptureValeriaRecoveryCoordinator`, `USBValeriaConfigurator`), Vision OCR (`ScreenOCR`, `LockScreenRecognition`), and MP4 recording (`ScreenRecorderManager`).
+  - `Sources/iPhoneUse/Devices`: [./Sources/iPhoneUse/Devices/README.md](./Sources/iPhoneUse/Devices/README.md) - Deterministic device addressing (`DeviceAddressing`), USB-to-BLE pairing and motion probes (`DeviceRegistry`, `DevicePairing`), lock monitoring (`DeviceLockMonitor`), setup readiness (`SetupReadiness`), and SQLite cross-process device leases (`LeaseStore`).
+  - `Sources/iPhoneUse/Input`: [./Sources/iPhoneUse/Input/README.md](./Sources/iPhoneUse/Input/README.md) - Per-host BLE HID synthesis (`DeviceInput`), dual-track enhanced/standard routing (`DualTrackInputCoordinator`, `JevTrackRouter`), post-action stillness/OCR verification (`StillnessDetector`, `ListScrollWalker`), Chinese IME text entry (`TextEntry`, `KeyboardMap`), and [LegacyPointer](./Sources/iPhoneUse/Input/LegacyPointer/README.md) relative pointer calibration.
+  - `Sources/iPhoneUse/Localization`: [./Sources/iPhoneUse/Localization/README.md](./Sources/iPhoneUse/Localization/README.md) - Compile-time verified bilingual (`zh`/`en`) string tables (`AppLanguage`, `StringsAPI`, `StringsMCP`, `StringsUI`, `StringsWeb`).
+  - `Sources/iPhoneUse/MCP`: [./Sources/iPhoneUse/MCP/README.md](./Sources/iPhoneUse/MCP/README.md) - Stdio JSON-RPC 2.0 MCP server (`MCPServer`), 50-tool catalog and HTTP translator (`MCPToolCatalog`, `MCPToolRequest`), flock serialization (`MCPAccess`), and resident daemon launcher (`MCPServiceLauncher`).
+  - `Sources/iPhoneUse/Task`: [./Sources/iPhoneUse/Task/README.md](./Sources/iPhoneUse/Task/README.md) - Autonomous multi-step mobile task execution (`GeminiTaskExecutor`) backed by `gemini-3.8-flash`, 3-layer safety guard (`GeminiSafetyGuard`), and persistent task session store (`TaskSessionStore`).
+  - `Sources/iPhoneUse/UI`: [./Sources/iPhoneUse/UI/README.md](./Sources/iPhoneUse/UI/README.md) - AppKit window coordination (`ControlWindowCoordinator`), live video canvas and input steering (`PhoneControlView`), shortcut sidebar (`ControlSidebar`), and overlays (`ControlConnectionOverlay`, `ControlLockNotice`).
+  - `Sources/iPhoneUse/USB`: [./Sources/iPhoneUse/USB/README.md](./Sources/iPhoneUse/USB/README.md) - USB system, photo, file-transfer, app-management, syslog, and AssistiveTouch channels (`USBSystemProvider`, `StateDirUSBSystemProvider`, `MobileDeviceLockdownBridge`).
+- `codex`: [./codex/README.md](./codex/README.md) - Codex skill integration hierarchy ([skills](./codex/skills/README.md), [iphone-use](./codex/skills/iphone-use/README.md), [SKILL.md](./codex/skills/iphone-use/SKILL.md), and [scripts](./codex/skills/iphone-use/scripts/README.md)) providing `ensure_service.py`, `mcp_call.py`, and `phone_exec.py`.
+- `scripts`: [./scripts/README.md](./scripts/README.md) - Build (`build-app.sh`), structural lint and test gate (`check`, `lint-structure.py`, `check-mcp.py`), pointer calibration (`calibrate-pointer.py`), Bluetooth diagnostics (`diagnose-bluetooth.sh`), MCP/skill installers (`install-mcp.sh`, `install-codex-mcp.sh`, `install-codex-skill.sh`), and release automation (`release.sh`).
+
+## Global Invariants
+
+- `[scripts/lint-structure.py:check_swift_content]` - No file under `Sources/**/*.swift` except `Sources/iPhoneUse/Devices/DeviceAddressing.swift` may directly check `IPHONE_USE_STATE_DIR == nil` or `!= nil`; all callers must use `RuntimeEnvironment.isLiveHardwareAllowed(environment:)`.
+- `[scripts/lint-structure.py:GHOSTHAND_SOCK_RE]` - No file under `Sources/**/*.swift` may reference or couple to `.ghosthand/daemon.sock`; all device control flows through native USB and Bluetooth LE HID channels.
+- `[scripts/lint-structure.py:WAKE_ACTION_PARSE_RE]` - `Sources/iPhoneUse/API/ControlAPI.swift` must define `shouldWakeControl(normalizedPath:)` delegating directly to `Action.parse(path: normalizedPath) != nil`.
+- `[Sources/iPhoneUse/API/HTTPServer.swift:HTTPServer]` - The HTTP control API binds exclusively to loopback `127.0.0.1` (default port `7390` resolved in `[Sources/iPhoneUse/App/Application.swift:Application.run]`) and rejects payloads larger than 8 MiB.
+- `[Sources/iPhoneUse/Devices/LeaseStore.swift:LeaseStore]` - Cross-process device access is serialized via `flock` locks (`service-<port>.lock`, `device-<port>-<hex_id>.lock`, `state.db.lock`) and SQLite WAL leases in `<IPHONE_USE_STATE_DIR>/state.db`, allowing at most one active lease per `screen_capture_id`.
+- `[Sources/iPhoneUse/Capture/USBValeriaConfigurator.swift:USBValeriaConfigurator]` - Dormant USB Valeria configuration switches fail closed when USB network tethering is active (unless explicitly overridden) and persist write-ahead switch records in `usb-valeria-switches.json` before mutating device configuration.
+
+## Global Side Effects
+
+- **Hardware & OS Frameworks**: Enables CoreMediaIO screen-capture devices (`kCMIOHardwarePropertyAllowScreenCaptureDevices`), captures USB frames via `AVCaptureSession`, dynamically loads `/System/Library/PrivateFrameworks/MobileDevice.framework/MobileDevice` for lockdown/screenshotr queries, switches IOKit USB configurations when recovering dormant Valeria streams, and publishes/connects Bluetooth LE HID GATT services (`0x1812`) via `CoreBluetooth`.
+- **Filesystem & Persistent State**: Reads and writes pairings (`~/Library/Application Support/iPhoneUse/pairings.json`), pointer calibration profiles (`~/Library/Application Support/iPhoneUse/pointer-calibration/`), USB Valeria switch ledgers (`~/Library/Application Support/iPhoneUse/usb-valeria-switches.json`), and runtime state/logs/leases/tasks under `IPHONE_USE_STATE_DIR` (default `~/Library/Logs/iPhoneUse/`, containing `state.db`, `tasks/<taskID>.json`, `usb/<deviceID>/`, and `*.lock`).
+- **Network & Subprocesses**: Listens on `http://127.0.0.1:7390`, sends HTTPS POST requests to the Gemini Interactions API (`https://generativelanguage.googleapis.com/v1beta/interactions`) during `task` execution and optional `JEV_API_URL` routing decisions, and spawns child processes for `USBIdentityScreenshot` workers, `--resident-quiet` daemon auto-start, `poki-native`, and `phone_exec.py`.
+
+## System Verification
+
+- Run: `./scripts/check` (executes `python3 -B scripts/lint-structure.py`, `swift test`, `swift build -c release`, `python3 -B -m unittest discover -s Tests/PythonTests -p 'test_*.py'`, and `python3 -B scripts/check-mcp.py`)
+
 ## 免责声明
 
 - **授权与合规**：请仅在你拥有或已获明确授权的设备上使用本项目，并遵守适用法律法规及相关应用、平台的使用条款。不得用于未经授权的访问、侵犯隐私或其他违法活动。
