@@ -224,7 +224,7 @@ final class GhosthandInputParityTests: XCTestCase {
             screenSize: { CGSize(width: 400, height: 800) },
             sleep: { _ in },
             reportSender: { id, bytes in
-                if id == .relativeMouse && bytes[0] == 1 {
+                if (id == .absolutePointer || id == .relativeMouse) && bytes[0] == 1 {
                     pressCount += 1
                 }
             },
@@ -335,12 +335,10 @@ final class GhosthandInputParityTests: XCTestCase {
             runtimeHooks: hooks
         )
         XCTAssertEqual(doubleTapResp.status, 200)
-        let absoluteMoves = events.filter { $0.0 == .absolutePointer }
-        let buttonDowns = events.filter { $0.0 == .relativeMouse && $0.1[0] == 1 }
-        let buttonUps = events.filter { $0.0 == .relativeMouse && $0.1[0] == 0 }
-        XCTAssertEqual(absoluteMoves.count, 1, "double_tap must position pointer once without moving between clicks")
+        let absoluteMoves = events.filter { $0.0 == .absolutePointer && $0.1[0] == 0 }
+        let buttonDowns = events.filter { $0.0 == .absolutePointer && $0.1[0] == 1 }
+        XCTAssertEqual(absoluteMoves.count, 3, "double_tap must position pointer once and release twice")
         XCTAssertEqual(buttonDowns.count, 2)
-        XCTAssertEqual(buttonUps.count, 2)
 
         // 2) triple_tap by coordinates
         events.removeAll()
@@ -350,9 +348,8 @@ final class GhosthandInputParityTests: XCTestCase {
             runtimeHooks: hooks
         )
         XCTAssertEqual(tripleTapResp.status, 200)
-        XCTAssertEqual(events.filter { $0.0 == .absolutePointer }.count, 1)
-        XCTAssertEqual(events.filter { $0.0 == .relativeMouse && $0.1[0] == 1 }.count, 3)
-        XCTAssertEqual(events.filter { $0.0 == .relativeMouse && $0.1[0] == 0 }.count, 3)
+        XCTAssertEqual(events.filter { $0.0 == .absolutePointer && $0.1[0] == 0 }.count, 4)
+        XCTAssertEqual(events.filter { $0.0 == .absolutePointer && $0.1[0] == 1 }.count, 3)
 
         // 3) hold by OCR text with durationMs = 1500
         events.removeAll()
@@ -363,8 +360,8 @@ final class GhosthandInputParityTests: XCTestCase {
             runtimeHooks: hooks
         )
         XCTAssertEqual(holdResp.status, 200)
-        XCTAssertEqual(events.filter { $0.0 == .relativeMouse && $0.1[0] == 1 }.count, 1)
-        XCTAssertEqual(events.filter { $0.0 == .relativeMouse && $0.1[0] == 0 }.count, 1)
+        XCTAssertEqual(events.filter { $0.0 == .absolutePointer && $0.1[0] == 1 }.count, 1)
+        XCTAssertEqual(events.filter { $0.0 == .absolutePointer && $0.1[0] == 0 }.count, 2)
         XCTAssertTrue(sleeps.contains { abs($0 - 1.5) < 0.001 })
     }
 
@@ -407,9 +404,9 @@ final class GhosthandInputParityTests: XCTestCase {
         )
         XCTAssertEqual(holdDragResp.status, 200)
         XCTAssertTrue(sleeps.contains { abs($0 - 1.2) < 0.001 }, "hold_drag must pause for holdMs before dragging")
-        let dragRelatives = events.filter { $0.0 == .relativeMouse && $0.1[0] == 1 && ($0.1[1] != 0 || $0.1[2] != 0) }
-        XCTAssertFalse(dragRelatives.isEmpty, "hold_drag must emit relative drag movement while button is held")
-        XCTAssertEqual(events.last?.0, .relativeMouse)
+        let dragHeldReports = events.filter { $0.0 == .absolutePointer && $0.1[0] == 1 }
+        XCTAssertGreaterThan(dragHeldReports.count, 2, "hold_drag must emit absolute drag movement while button is held")
+        XCTAssertEqual(events.last?.0, .absolutePointer)
         XCTAssertEqual(events.last?.1[0], 0, "hold_drag must release button at the end")
 
         // 2) scroll up/down/left/right with ticks
