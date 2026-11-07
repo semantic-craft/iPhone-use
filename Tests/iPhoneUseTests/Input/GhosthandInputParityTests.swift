@@ -224,7 +224,7 @@ final class GhosthandInputParityTests: XCTestCase {
             screenSize: { CGSize(width: 400, height: 800) },
             sleep: { _ in },
             reportSender: { id, bytes in
-                if (id == .absolutePointer || id == .relativeMouse) && bytes[0] == 1 {
+                if id == .absolutePointer && bytes[0] == 1 {
                     pressCount += 1
                 }
             },

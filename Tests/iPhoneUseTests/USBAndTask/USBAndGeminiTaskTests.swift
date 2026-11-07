@@ -455,7 +455,7 @@ final class USBAndGeminiTaskTests: XCTestCase {
 
         // Verify 0..999 coordinate denormalization produced real HID pointer click
         XCTAssertTrue(
-            sentReports.contains { ($0.0 == .absolutePointer || $0.0 == .relativeMouse) && $0.1.first == 1 },
+            sentReports.contains { $0.0 == .absolutePointer && $0.1.first == 1 },
             "Expected mouse down event from click(750, 875)"
         )
     }
@@ -559,7 +559,7 @@ final class USBAndGeminiTaskTests: XCTestCase {
             ],
             transport: transport,
             onReport: { reportID, bytes in
-                if (reportID == .absolutePointer || reportID == .relativeMouse), bytes.first == 1 { clickCount += 1 }
+                if reportID == .absolutePointer, bytes.first == 1 { clickCount += 1 }
             }
         )
 
