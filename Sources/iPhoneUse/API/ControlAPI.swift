@@ -903,12 +903,12 @@ enum ControlAPI {
 
     private static func tapTextPoint(_ id: String, _ x: Double, _ y: Double, _ hold: Double) throws {
         let device = try DeviceRegistry.shared.find(id)
-        DeviceRegistry.shared.cancelBackgroundMotion(for: device)
         let input = try DeviceRegistry.shared.input(for: device)
         guard input.isPointerReady else {
-            input.invalidatePointerEstimate()
+            input.invalidatePointerEstimate(preservingBackgroundMotion: true)
             throw DeviceError(StringsAPI.current.pointerNotReady)
         }
+        DeviceRegistry.shared.cancelBackgroundMotion(for: device)
         try input.tap(x: x, y: y, hold: hold)
     }
 
@@ -1657,6 +1657,7 @@ enum ControlAPI {
         let targetScreenName: String
         let targetScreenSize: CGSize?
         let input: DeviceInput
+        let liveDevice: Device?
         let isLockedCheck: () -> Bool
         let waitForFrameCheck: () -> Bool
         let observeMutedCheck: () -> Bool?
@@ -1667,6 +1668,7 @@ enum ControlAPI {
             targetScreenName = runtimeHooks.deviceName
             targetScreenSize = runtimeHooks.screenSize
             input = runtimeHooks.input
+            liveDevice = nil
             isLockedCheck = runtimeHooks.isLocked
             waitForFrameCheck = runtimeHooks.waitForFrame
             observeMutedCheck = runtimeHooks.observeMutedState
@@ -1674,14 +1676,11 @@ enum ControlAPI {
             try authorizeDeviceLease(deviceID: targetID, leaseID: leaseID, command: commandName)
         } else {
             let device = try DeviceRegistry.shared.find(deviceQuery)
+            liveDevice = device
             targetID = device.id
             targetScreenName = device.screen.name
             targetScreenSize = device.screen.size
             try authorizeDeviceLease(deviceID: targetID, leaseID: leaseID, command: commandName)
-            // Real input takes priority over background probes and measurement.
-            // Cancel before resolving/queuing input, so it cannot wait behind the
-            // very measurement that the user is trying to interrupt.
-            DeviceRegistry.shared.cancelBackgroundMotion(for: device)
             input = try DeviceRegistry.shared.input(for: device)
             isLockedCheck = {
                 let state = device.lockState
@@ -1697,8 +1696,8 @@ enum ControlAPI {
         }
 
         let coordinator: DualTrackInputCoordinator?
-        if runtimeHooks == nil, let dev = try? DeviceRegistry.shared.find(deviceQuery ?? targetID) {
-            coordinator = DeviceRegistry.shared.coordinator(for: dev)
+        if let liveDevice {
+            coordinator = DeviceRegistry.shared.coordinator(for: liveDevice)
         } else {
             coordinator = nil
         }
@@ -1706,11 +1705,17 @@ enum ControlAPI {
         let isEnhancedActive = coordinator?.mode == .enhanced
             || (coordinator?.mode == .auto && coordinator?.enhancedDriver.isAvailable == true && coordinator?.state != .degradedToStandard)
 
+        // Reject unverified coordinates before cancellation so retrying clients
+        // cannot repeatedly interrupt the calibration needed to serve them.
+        // Ready gestures and keyboard/raw input still preempt background work.
         if action.requiresPointer, !isEnhancedActive, !input.isPointerReady {
             // Keep readiness ahead of parameter parsing. API callers may have no window
             // polling readiness, and a lost subscription or screen change invalidates origin.
-            input.invalidatePointerEstimate()
+            input.invalidatePointerEstimate(preservingBackgroundMotion: true)
             return .error(StringsAPI.current.pointerNotReady, status: 503)
+        }
+        if let liveDevice {
+            DeviceRegistry.shared.cancelBackgroundMotion(for: liveDevice)
         }
 
         var responsePayload: [String: Any] = ["ok": true, "device": targetID]

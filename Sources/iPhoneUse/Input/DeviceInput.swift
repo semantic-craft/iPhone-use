@@ -8,11 +8,20 @@ final class DeviceInput {
     private let lifecycleLock = NSLock()
     private var retired = false
     private var lastActivityUptime: TimeInterval = ProcessInfo.processInfo.systemUptime
+    private var calibrationRejected: Bool
     var isRetired: Bool { lifecycleLock.withLock { retired } }
     var lastInputUptime: TimeInterval { lifecycleLock.withLock { lastActivityUptime } }
+    var hasRejectedCalibration: Bool { lifecycleLock.withLock { calibrationRejected } }
+    var pointerOrientation: RelativePointerScreenMatcher.Orientation {
+        lifecycleLock.withLock { relativePointerOrientation }
+    }
 
     func recordInputActivity(at uptime: TimeInterval = ProcessInfo.processInfo.systemUptime) {
         lifecycleLock.withLock { lastActivityUptime = uptime }
+    }
+
+    func rejectCalibration() {
+        lifecycleLock.withLock { calibrationRejected = true }
     }
 
     var isCurrentSession: Bool {
@@ -32,6 +41,7 @@ final class DeviceInput {
     }
 
     var needsCalibration: Bool {
+        if hasRejectedCalibration { return true }
         if calibrationRequired && calibration == nil { return true }
         if let calibration, let size = screenSize?() { return !calibration.matches(size) }
         return false
@@ -51,6 +61,7 @@ final class DeviceInput {
     private let hid = HIDPeripheral.shared
     private let reportReadiness: (ReportID, UUID, UUID?) -> Bool
     private let inputIsAllowed: () -> Bool
+    private let calibrationIsVerified: () -> Bool
     private var buttons: UInt8 = 0
     private let reportSender: (ReportID, [UInt8]) -> Void
     private let sleep: (TimeInterval) -> Void
@@ -61,6 +72,7 @@ final class DeviceInput {
     /// Queue-confined progress lets fresh hover targets share one homing path.
     /// Cancelling the interaction or invalidating its mapping starts a new path.
     private var relativeHomingReportIndex = 0
+    private var relativePointerOrientation: RelativePointerScreenMatcher.Orientation
     private var lastTrackingMovement: RelativePointerCalibration.Movement?
     /// Predicted pointer position in physical pixels while an uncalibrated
     /// drag runs on the relative collection. Nil outside a drag.
@@ -91,6 +103,8 @@ final class DeviceInput {
         var calibrationInfo: [String: Any] = [
             "filePresent": calibrationFilePresent,
             "loaded": calibration != nil,
+            "responseRejected": hasRejectedCalibration,
+            "sessionVerified": calibration == nil || calibrationIsVerified(),
             "mode": mode,
         ]
         if let currentSize {
@@ -113,13 +127,14 @@ final class DeviceInput {
             "ready": isPointerReady,
             "needsCalibration": needsCalibration,
             "sessionCurrent": isCurrentSession,
+            "relativePointerOrientation": pointerOrientation.rawValue,
             "coordinateMappingAvailable": coordinateMappingAvailable,
             "calibration": calibrationInfo,
         ]
     }
 
     private var coordinateMappingAvailable: Bool {
-        if isRetired || !inputIsAllowed() { return false }
+        if isRetired || hasRejectedCalibration || !inputIsAllowed() { return false }
         if calibrationRequired && calibration == nil { return false }
         if let calibration, let screenSize {
             guard let size = screenSize(), calibration.matches(size) else { return false }
@@ -133,6 +148,9 @@ final class DeviceInput {
         calibration: RelativePointerCalibration? = nil,
         calibrationRequired: Bool = false,
         calibrationFilePresent: Bool? = nil,
+        calibrationRejected: Bool = false,
+        calibrationIsVerified: @escaping () -> Bool = { true },
+        relativePointerOrientation: RelativePointerScreenMatcher.Orientation = .identity,
         screenSize: (() -> CGSize?)? = nil,
         inputIsAllowed: @escaping () -> Bool = { true },
         sleep: @escaping (TimeInterval) -> Void = Thread.sleep(forTimeInterval:),
@@ -144,8 +162,11 @@ final class DeviceInput {
         self.calibration = calibration
         self.calibrationRequired = calibrationRequired
         self.calibrationFilePresent = calibrationFilePresent ?? calibrationRequired
+        self.calibrationRejected = calibrationRejected
         self.screenSize = screenSize
         self.inputIsAllowed = inputIsAllowed
+        self.calibrationIsVerified = calibrationIsVerified
+        self.relativePointerOrientation = relativePointerOrientation
         self.sleep = sleep
         self.reportReadiness =
             reportReadiness ?? {
@@ -437,9 +458,12 @@ extension DeviceInput {
 
     /// Reload only an idle input; queued work from the old configuration must
     /// not send reports after the registry publishes its replacement.
-    func retireForCalibrationReload() throws {
+    func retireForCalibrationReload(ifActivityUnchanged activity: UInt64? = nil) throws {
         try queue.sync {
             try requireIdlePointer()
+            if let activity, !backgroundSequence.isCurrent(activity) {
+                throw InputError.pairingProbeUnavailable
+            }
             advanceMotionSequence()
             clearPointerEstimate()
             lifecycleLock.withLock { retired = true }
@@ -465,7 +489,8 @@ extension DeviceInput {
                     guard isReady(), backgroundSequence.isCurrent(sequence) else {
                         throw InputError.pairingProbeUnavailable
                     }
-                    relative(dx, dy)
+                    // Discovery observes raw HID axes before applying a transform.
+                    send(.relativeMouse, HIDReportPayload.relativeMouse(buttons: 0, dx: dx, dy: dy))
                     pause(step)
                 }
             }
@@ -499,6 +524,15 @@ extension DeviceInput {
         }
     }
 
+    /// Adopt only a transform proven by this session's closed discovery path.
+    /// Registry cache rebuilds receive the same proof explicitly; files are unchanged.
+    func adoptRelativePointerOrientation(_ orientation: RelativePointerScreenMatcher.Orientation) {
+        queue.sync {
+            lifecycleLock.withLock { relativePointerOrientation = orientation }
+            clearPointerEstimate()
+        }
+    }
+
     /// A completed visual trajectory can establish the current origin without
     /// touching an edge. Keep it only on this exact screen/profile/input queue;
     /// cancellation or unrelated foreground activity invalidates the sample.
@@ -524,11 +558,14 @@ extension DeviceInput {
     /// cancellation invalidate the entire result before it can be saved.
     func measureRelativePointer(
         screenID: String, size: CGSize,
+        activity: UInt64? = nil,
+        reuseExisting: Bool = false,
         isReady: @escaping () -> Bool,
         capture: @escaping () -> [UInt8]?,
+        onMismatch: @escaping () -> Void = {},
         progress: @escaping (Int) -> Void = { _ in }
-    ) throws -> RelativePointerCalibration {
-        let sequence = backgroundSequence.current
+    ) throws -> AutomaticPointerCalibration.Resolution {
+        let sequence = activity ?? backgroundSequence.current
         return try queue.sync {
             try requireIdlePointer()
             guard size.width.isFinite, size.height.isFinite,
@@ -541,15 +578,20 @@ extension DeviceInput {
             defer { clearPointerEstimate() }
             func requireCurrent() throws {
                 guard !self.isRetired, isReady(), self.backgroundSequence.isCurrent(sequence) else {
-                    throw InputError.pairingProbeUnavailable
+                    throw DeviceError(
+                        "pointer measurement interrupted (retired=\(self.isRetired), ready=\(isReady()), activityCurrent=\(self.backgroundSequence.isCurrent(sequence)))"
+                    )
                 }
             }
+            try requireCurrent()
+            let reportInterval = reuseExisting ? (calibration?.reportInterval ?? 0.03) : 0.03
             let measurement = AutomaticPointerCalibration(
                 host: host, screenID: screenID, width: Int(size.width), height: Int(size.height),
+                reportInterval: reportInterval,
                 send: { dx, dy in
                     try requireCurrent()
                     self.relative(dx, dy)
-                    self.pause(0.03)
+                    self.pause(reportInterval)
                 },
                 capture: {
                     self.pause(0.4)
@@ -558,7 +600,33 @@ extension DeviceInput {
                     return PointerMotionObservation.Frame(
                         width: Int(size.width), height: Int(size.height), pixels: pixels)
                 }, progress: progress)
-            return try measurement.measure()
+            if reuseExisting {
+                var rejected = false
+                do {
+                    let result = try measurement.resolve(existing: calibration) {
+                        rejected = true
+                        onMismatch()
+                    }
+                    try requireCurrent()
+                    // Publish rejection before releasing this queue: a waiting
+                    // click must not use the old curve during registry publication.
+                    self.lifecycleLock.withLock {
+                        if result.reused {
+                            self.calibrationRejected = false
+                        } else if rejected {
+                            self.calibrationRejected = true
+                        }
+                    }
+                    return result
+                } catch {
+                    // Publishing a readiness change while reports are still
+                    // running makes the control window cancel this very job.
+                    // Block a rejected curve only once recovery has stopped.
+                    if rejected { self.lifecycleLock.withLock { self.calibrationRejected = true } }
+                    throw error
+                }
+            }
+            return AutomaticPointerCalibration.Resolution(profile: try measurement.measure(), reused: false)
         }
     }
 
@@ -709,8 +777,8 @@ extension DeviceInput {
 
     /// Always clear the phone-side button state when the window loses focus or
     /// the mouse interaction is cancelled outside the view.
-    func cancelPointer() {
-        discardPendingMotion()
+    func cancelPointer(preservingBackgroundMotion: Bool = false) {
+        if preservingBackgroundMotion { motionSequence.advance() } else { discardPendingMotion() }
         queue.async {
             self.windowDragging = false
             self.endEstimatedDrag()
@@ -731,8 +799,8 @@ extension DeviceInput {
     /// A report subscription can disappear while a calibrated movement is being
     /// sent. Drop the predicted landing so the first movement after reconnect
     /// establishes a fresh origin instead of trusting reports that were lost.
-    func invalidatePointerEstimate() {
-        discardPendingMotion()
+    func invalidatePointerEstimate(preservingBackgroundMotion: Bool = false) {
+        if preservingBackgroundMotion { motionSequence.advance() } else { discardPendingMotion() }
         queue.async {
             self.clearPointerEstimate()
         }
@@ -1070,7 +1138,8 @@ extension DeviceInput {
     }
 
     fileprivate func relative(_ dx: Int, _ dy: Int) {
-        send(.relativeMouse, HIDReportPayload.relativeMouse(buttons: buttons, dx: dx, dy: dy))
+        let report = relativePointerOrientation.reportDelta(dx: dx, dy: dy)
+        send(.relativeMouse, HIDReportPayload.relativeMouse(buttons: buttons, dx: report.dx, dy: report.dy))
     }
 
     fileprivate func button(down: Bool) {
